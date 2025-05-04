@@ -11,6 +11,27 @@ ChatSync is a modern, real-time chat application built with Go and WebSocket tec
 - **Message Persistence**: Messages are stored and retrieved for both private and group chats
 - **Modern UI**: Clean and intuitive user interface
 - **Responsive Design**: Works seamlessly across different devices
+- **Group Management**: Create groups with multiple members, add/remove members, view group members, and group-specific chat history
+
+## UI Features
+
+- **Clean and modern interface**: Provides a user-friendly and visually appealing experience
+- **Responsive design**: Works well on various devices, including desktops, tablets, and smartphones
+- **Real-time status updates**: Users can see the online/offline status of other users in real-time
+- **Intuitive group creation dialog**: Allows users to easily create new groups
+- **Member management interface**: Provides tools to manage group members and their permissions
+- **Message history with timestamps**: Allows users to view the history of messages in both private and group chats
+- **Online/offline indicators**: Users can see if other users are online or offline
+- **System notifications**: Users receive notifications about new messages or group events
+
+## Group Management
+
+- **Create new groups with custom names**: Users can create new groups with specific names
+- **Add multiple members at once**: Users can add multiple members to a group in one operation
+- **Remove members from groups**: Users can remove members from a group if needed
+- **View group members**: Users can view the list of members in a group
+- **Group-specific chat history**: Users can view the history of messages in a specific group
+- **Admin controls for group management**: Group owners can manage the group, including adding or removing members
 
 ## Prerequisites
 
