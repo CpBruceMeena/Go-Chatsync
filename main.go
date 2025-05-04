@@ -22,14 +22,15 @@ var upgrader = websocket.Upgrader{
 
 // Message represents the structure of our chat messages
 type Message struct {
-	Type      string `json:"type"`       // message types: private_message, group_message, system
-	From      string `json:"from"`       // sender's username
-	To        string `json:"to"`         // recipient's username
-	Content   string `json:"content"`    // message content
-	Timestamp string `json:"timestamp"`  // message timestamp
-	GroupID   string `json:"group_id"`   // group identifier
-	GroupName string `json:"group_name"` // group name for creation
-	Member    string `json:"member"`     // member username for group operations
+	Type      string   `json:"type"`       // message types: private_message, group_message, system
+	From      string   `json:"from"`       // sender's username
+	To        string   `json:"to"`         // recipient's username
+	Content   string   `json:"content"`    // message content
+	Timestamp string   `json:"timestamp"`  // message timestamp
+	GroupID   string   `json:"group_id"`   // group identifier
+	GroupName string   `json:"group_name"` // group name for creation
+	Member    string   `json:"member"`     // member username for group operations
+	Members   []string `json:"members"`    // multiple members for group operations
 }
 
 // MessageStore represents a conversation between two users or a group
@@ -248,33 +249,34 @@ func (c *Client) readPump() {
 		case "private_message":
 			if msg.To != "" {
 				// Verify the recipient exists
-				var recipientExists bool
 				clientsMux.Lock()
-				for _, client := range clients {
-					if client.Username == msg.To {
-						recipientExists = true
-						break
-					}
-				}
+				_, exists := clients[msg.To]
 				clientsMux.Unlock()
 
-				if recipientExists {
-					// Store the message before sending
-					storeMessage(msg)
-					sendToUser(msg)
-				} else {
-					log.Printf("Recipient %s not found for message from %s", msg.To, msg.From)
-					// Send error message back to sender
+				if !exists {
+					// Send error message to sender
 					errorMsg := Message{
 						Type:      "system",
-						Content:   fmt.Sprintf("User not found: %s", msg.To),
+						Content:   fmt.Sprintf("User %s is not online", msg.To),
 						Timestamp: time.Now().Format(time.RFC3339),
 					}
-					errorBytes, _ := json.Marshal(errorMsg)
-					c.send <- errorBytes
+					sendToUser(errorMsg)
+					continue
 				}
-			} else {
-				log.Printf("Private message missing recipient: %+v", msg)
+
+				// Store the message
+				storeMessage(msg)
+
+				// Send to recipient
+				sendToUser(msg)
+
+				// Send confirmation to sender
+				confirmation := Message{
+					Type:      "system",
+					Content:   "Message sent",
+					Timestamp: time.Now().Format(time.RFC3339),
+				}
+				sendToUser(confirmation)
 			}
 		case "get_history":
 			// Handle history request
@@ -303,17 +305,33 @@ func (c *Client) readPump() {
 			}
 		case "group_message":
 			if msg.GroupID != "" {
-				// Store the message before sending
+				// Verify the group exists
+				clientsMux.Lock()
+				_, exists := groups[msg.GroupID]
+				clientsMux.Unlock()
+
+				if !exists {
+					// Send error message to sender
+					errorMsg := Message{
+						Type:      "system",
+						Content:   fmt.Sprintf("Group %s does not exist", msg.GroupID),
+						Timestamp: time.Now().Format(time.RFC3339),
+					}
+					sendToUser(errorMsg)
+					continue
+				}
+
+				// Store the message
 				storeMessage(msg)
+
+				// Send to group
 				sendToGroup(msg)
-			} else {
-				log.Printf("Group message missing group ID: %+v", msg)
 			}
 		case "group_create":
 			createGroup(msg)
-		case "group_add_member":
+		case "add_group_member":
 			addGroupMember(msg)
-		case "group_remove_member":
+		case "remove_group_member":
 			removeGroupMember(msg)
 		default:
 			log.Printf("Unknown message type: %s", msg.Type)
@@ -512,8 +530,31 @@ func createGroup(message Message) {
 		return
 	}
 
+	// Add initial members if provided
+	if len(message.Members) > 0 {
+		for _, memberUsername := range message.Members {
+			if member, exists := clients[memberUsername]; exists {
+				// Add member to group
+				group.Members[memberUsername] = member
+				member.Groups[groupID] = true
+
+				// Notify the new member
+				notification := Message{
+					Type:      "system",
+					Content:   fmt.Sprintf("You have been added to group %s", group.Name),
+					Timestamp: time.Now().Format(time.RFC3339),
+					GroupID:   groupID,
+					GroupName: group.Name,
+				}
+				sendToUser(notification)
+			} else {
+				log.Printf("User %s not found", memberUsername)
+			}
+		}
+	}
+
 	groups[groupID] = group
-	log.Printf("Group %s created successfully", groupID)
+	log.Printf("Group %s created successfully with %d members", groupID, len(group.Members))
 
 	// Update group list for all clients
 	log.Printf("Calling sendGroupList() after group creation")
@@ -521,33 +562,95 @@ func createGroup(message Message) {
 
 	// Broadcast system message
 	if creator, exists := clients[message.From]; exists {
-		broadcastSystemMessage(fmt.Sprintf("Group '%s' created by %s", group.Name, creator.Username))
+		memberCount := len(group.Members)
+		if memberCount > 1 {
+			broadcastSystemMessage(fmt.Sprintf("Group '%s' created by %s with %d members", group.Name, creator.Username, memberCount))
+		} else {
+			broadcastSystemMessage(fmt.Sprintf("Group '%s' created by %s", group.Name, creator.Username))
+		}
 	}
 }
 
 func addGroupMember(message Message) {
-	if group, exists := groups[message.GroupID]; exists {
-		// Check if the sender is the group admin
-		if group.Admin != message.From {
-			log.Printf("User %s is not authorized to add members to group %s", message.From, message.GroupID)
-			return
+	clientsMux.Lock()
+	defer clientsMux.Unlock()
+
+	group, exists := groups[message.GroupID]
+	if !exists {
+		log.Printf("Group %s does not exist", message.GroupID)
+		return
+	}
+
+	// Check if the sender is the admin
+	if group.Admin != message.From {
+		log.Printf("User %s is not authorized to add members to group %s", message.From, message.GroupID)
+		return
+	}
+
+	// Handle multiple members if provided
+	if len(message.Members) > 0 {
+		for _, memberUsername := range message.Members {
+			if member, exists := clients[memberUsername]; exists {
+				// Add member to group
+				group.Members[memberUsername] = member
+				member.Groups[message.GroupID] = true
+
+				// Notify the new member
+				notification := Message{
+					Type:      "system",
+					Content:   fmt.Sprintf("You have been added to group %s", group.Name),
+					Timestamp: time.Now().Format(time.RFC3339),
+					GroupID:   message.GroupID,
+					GroupName: group.Name,
+				}
+				sendToUser(notification)
+
+				// Notify group members
+				groupNotification := Message{
+					Type:      "system",
+					Content:   fmt.Sprintf("%s has been added to the group", memberUsername),
+					Timestamp: time.Now().Format(time.RFC3339),
+					GroupID:   message.GroupID,
+					GroupName: group.Name,
+				}
+				sendToGroup(groupNotification)
+			} else {
+				log.Printf("User %s not found", memberUsername)
+			}
 		}
-
-		// Find the client to add
-		if newMember, exists := clients[message.Member]; exists {
+	} else if message.Member != "" {
+		// Handle single member (backward compatibility)
+		if member, exists := clients[message.Member]; exists {
 			// Add member to group
-			group.Members[newMember.Username] = newMember
-			newMember.Groups[message.GroupID] = true
+			group.Members[message.Member] = member
+			member.Groups[message.GroupID] = true
 
-			// Notify all group members
-			broadcastSystemMessage(fmt.Sprintf("%s added %s to group '%s'", message.From, message.Member, group.Name))
+			// Notify the new member
+			notification := Message{
+				Type:      "system",
+				Content:   fmt.Sprintf("You have been added to group %s", group.Name),
+				Timestamp: time.Now().Format(time.RFC3339),
+				GroupID:   message.GroupID,
+				GroupName: group.Name,
+			}
+			sendToUser(notification)
 
-			// Update group list for all clients
-			sendGroupList()
+			// Notify group members
+			groupNotification := Message{
+				Type:      "system",
+				Content:   fmt.Sprintf("%s has been added to the group", message.Member),
+				Timestamp: time.Now().Format(time.RFC3339),
+				GroupID:   message.GroupID,
+				GroupName: group.Name,
+			}
+			sendToGroup(groupNotification)
 		} else {
-			log.Printf("User %s not found for adding to group %s", message.Member, message.GroupID)
+			log.Printf("User %s not found", message.Member)
 		}
 	}
+
+	// Update group list for all users
+	sendGroupList()
 }
 
 func removeGroupMember(message Message) {
