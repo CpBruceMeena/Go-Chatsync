@@ -1,102 +1,114 @@
-# ChatSync - Real-time WebSocket Chat Application
+# ChatSync - Real-time Chat Application
 
-ChatSync is a modern, real-time chat application built with Go and WebSocket technology. It supports both private messaging and group chats with a clean, intuitive interface.
+ChatSync is a modern, real-time chat application built with Go and WebSocket technology. It provides a seamless messaging experience with support for both private and group chats, along with real-time user status updates.
 
 ## Features
 
-### Core Features
-- Real-time messaging using WebSocket
-- Private one-to-one chat
-- Group chat functionality
-- Message history for private chats
-- User presence tracking
-- System notifications
+- **Real-time Messaging**: Instant message delivery using WebSocket technology
+- **Private Chat**: One-to-one conversations between users
+- **Group Chat**: Create and manage group conversations
+- **User Status**: Real-time online/offline status indicators
+- **Message Persistence**: Messages are stored and retrieved for both private and group chats
+- **Modern UI**: Clean and intuitive user interface
+- **Responsive Design**: Works seamlessly across different devices
 
-### Group Management
-- Create groups with custom names
-- Add/remove group members
-- Group admin controls
-- Group member list display
+## Prerequisites
+
+- Go 1.16 or higher
+- Modern web browser with WebSocket support
+
+## Quick Start
+
+The easiest way to run ChatSync is using the provided run script:
+
+```bash
+# Clone the repository
+git clone https://github.com/CpBruceMeena/Go-Chatsync.git
+cd Go-Chatsync
+
+# Run the application
+./run.sh
+```
+
+The application will be available at `http://localhost:8080`
+
+## Manual Setup
+
+If you prefer to set up manually, follow these steps:
+
+1. **Install Dependencies**
+   ```bash
+   go mod tidy
+   ```
+
+2. **Build the Project**
+   ```bash
+   go build -o chatsync
+   ```
+
+3. **Run the Application**
+   ```bash
+   ./chatsync
+   ```
+
+## Project Structure
+
+```
+ChatSync/
+├── main.go           # Main application entry point
+├── static/          # Static files
+│   └── index.html   # Frontend application
+├── go.mod           # Go module file
+├── go.sum           # Go module checksum
+└── run.sh          # Automated run script
+```
+
+## Features in Detail
+
+### Private Chat
+- Real-time one-to-one messaging
+- Message history persistence
+- Online/offline status indicators
+- Message timestamps
+
+### Group Chat
+- Create new groups
+- Add/remove members
+- Group message history
+- Member management
+- Admin controls for group owners
 
 ### User Interface
-- Clean, modern design
-- Separate panels for users and groups
-- Real-time message updates
-- Message timestamps
-- System notifications
-- User online status
+- Clean and modern design
+- Intuitive navigation
+- Real-time status updates
+- Responsive layout
+- Easy group management
 
-## Technical Architecture
+## Technical Details
 
-### Backend (Go)
-- WebSocket server implementation
+### Backend
+- Built with Go
+- WebSocket for real-time communication
 - Concurrent message handling
-- Group and user management
-- Message history storage
-- Real-time broadcasting
-
-### Frontend (HTML/CSS/JavaScript)
-- Responsive design
-- Real-time UI updates
-- Dynamic group/user lists
-- Message history display
-- Error handling and notifications
-
-## Getting Started
-
-### Prerequisites
-- Go 1.16 or higher
-- Modern web browser
-
-### Installation
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/chatsync.git
-cd chatsync
-```
-
-2. Run the server:
-```bash
-go run main.go
-```
-
-3. Access the application:
-Open your browser and navigate to `http://localhost:8080`
-
-### Usage
-1. Enter your username to join the chat
-2. Select a user from the list to start a private chat
-3. Create or join groups using the group panel
-4. Send messages in private or group chats
-
-## Message Types
-- Private Messages: One-to-one communication
-- Group Messages: Broadcast to all group members
-- System Messages: Notifications and status updates
-
-## Security Features
-- Username-based authentication
-- Group admin controls
-- Message validation
-- Connection state management
-
-## Future Improvements
 - Message persistence
-- File sharing
-- User authentication
-- Message encryption
-- Mobile responsiveness
-- Message search
-- User profiles
-- Message reactions
+- User session management
+
+### Frontend
+- Modern HTML5/CSS3
+- JavaScript for real-time updates
+- WebSocket client implementation
+- Responsive design
+- Font Awesome icons
 
 ## Contributing
+
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
+
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
-- Built with Go and WebSocket
-- Inspired by modern chat applications
-- Designed for simplicity and reliability 
+## Support
+
+For support, please open an issue in the GitHub repository. 
