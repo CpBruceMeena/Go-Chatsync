@@ -132,14 +132,34 @@
         }
         .group-controls {
             margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #eee;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        .group-controls.active {
+            display: block;
+        }
+        .group-controls h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .group-controls input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .group-controls button {
+            width: 100%;
+            margin-bottom: 10px;
         }
         .group-members {
             margin-top: 10px;
             padding: 10px;
             background: #f8f9fa;
-            border-radius: 4px;
+            border-radius: 8px;
             display: none;
         }
         .group-members.active {
@@ -147,26 +167,114 @@
         }
         .member-list {
             margin-top: 5px;
+            max-height: 150px;
+            overflow-y: auto;
         }
         .member-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 5px;
+            padding: 5px 10px;
+            background: white;
+            margin: 5px 0;
             border-radius: 4px;
+            border: 1px solid #eee;
         }
-        .member-item:hover {
-            background-color: #e3f2fd;
+        .member-item .remove-btn {
+            padding: 2px 8px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
         }
-        .add-member-btn {
-            padding: 5px 10px;
-            font-size: 0.9em;
-            background-color: #4caf50;
+        .member-item .remove-btn:hover {
+            background: #c82333;
         }
-        .remove-member-btn {
-            padding: 5px 10px;
-            font-size: 0.9em;
-            background-color: #f44336;
+        .group-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .group-item:hover {
+            background: #f0f0f0;
+        }
+        .group-item.active {
+            background: #e3f2fd;
+        }
+        .group-item .group-name {
+            flex: 1;
+        }
+        .group-item .group-actions {
+            display: none;
+        }
+        .group-item:hover .group-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .group-item .group-actions button {
+            padding: 2px 8px;
+            font-size: 0.8em;
+        }
+        .create-group-btn {
+            width: 100%;
+            margin-top: 10px;
+            background: #28a745;
+        }
+        .create-group-btn:hover {
+            background: #218838;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .modal-header h3 {
+            margin: 0;
+        }
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            color: #666;
+        }
+        .modal-body {
+            margin-bottom: 15px;
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
         }
         .chat-header {
             padding: 10px;
@@ -209,10 +317,7 @@
                 <div class="panel groups-panel">
                     <h3>Groups</h3>
                     <div id="groupList"></div>
-                    <div class="group-controls">
-                        <input type="text" id="newGroupName" placeholder="New group name">
-                        <button onclick="createGroup()">Create Group</button>
-                    </div>
+                    <button class="create-group-btn" onclick="showCreateGroupModal()">Create New Group</button>
                 </div>
                 <div class="panel chat-panel">
                     <div class="chat-header" id="chatHeader">Select a user or group to start chatting</div>
@@ -222,6 +327,30 @@
                         <button type="submit" disabled>Send</button>
                     </form>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Group Modal -->
+    <div id="createGroupModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New Group</h3>
+                <button class="close-modal" onclick="hideCreateGroupModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="newGroupName" placeholder="Enter group name" class="form-control">
+                <div class="member-selection" style="margin-top: 15px;">
+                    <h4>Add Members</h4>
+                    <select id="memberSelect" class="form-control">
+                        <option value="">Select a user...</option>
+                    </select>
+                    <div id="selectedMembers" class="member-list"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="hideCreateGroupModal()">Cancel</button>
+                <button onclick="createGroupWithMembers()">Create Group</button>
             </div>
         </div>
     </div>
@@ -301,6 +430,11 @@
                             displayHistory(message.history);
                         }
                         break;
+                    case 'group_history':
+                        if (message.history) {
+                            displayGroupHistory(message.history);
+                        }
+                        break;
                 }
             };
         }
@@ -327,56 +461,24 @@
         }
 
         function updateGroupList(groupList) {
-            console.log('Updating group list with data:', groupList);
+            console.log('Updating group list:', groupList);
             const groupListDiv = document.getElementById('groupList');
             groupListDiv.innerHTML = '';
-            
-            // Convert groupList object to Map
             groups = new Map(Object.entries(groupList));
-            console.log('Converted groups Map:', groups);
-            console.log('Groups Map size:', groups.size);
-            console.log('Groups Map entries:', Array.from(groups.entries()));
             
-            if (groups.size === 0) {
-                console.log('No groups available');
-                groupListDiv.innerHTML = '<div class="no-groups">No groups available</div>';
-                return;
-            }
-            
-            groups.forEach((group, groupId) => {
-                console.log('Processing group:', groupId, group);
+            groups.forEach((groupData, groupId) => {
                 const groupDiv = document.createElement('div');
                 groupDiv.className = 'group-item' + (groupId === selectedGroup ? ' active' : '');
                 groupDiv.setAttribute('data-group-id', groupId);
                 
-                const isAdmin = group.admin === username;
+                const isAdmin = groupData.admin === username;
                 
                 groupDiv.innerHTML = `
-                    <div class="group-header">
-                        <span>${group.name}</span>
-                        <small>(${group.members ? group.members.length : 0} members)</small>
-                    </div>
-                    <div class="group-members ${groupId === selectedGroup ? 'active' : ''}">
-                        <div class="member-list">
-                            ${group.members ? group.members.map(member => `
-                                <div class="member-item">
-                                    <span>${member}</span>
-                                    ${isAdmin && member !== username ? 
-                                        `<button class="remove-member-btn" onclick="removeMember('${groupId}', '${member}')">Remove</button>` 
-                                        : ''}
-                                </div>
-                            `).join('') : ''}
-                        </div>
+                    <div class="group-name">${groupData.name}</div>
+                    <div class="group-actions">
                         ${isAdmin ? `
-                            <div class="add-member-controls">
-                                <select id="addMemberSelect-${groupId}">
-                                    ${Array.from(users)
-                                        .filter(user => !group.members.includes(user))
-                                        .map(user => `<option value="${user}">${user}</option>`)
-                                        .join('')}
-                                </select>
-                                <button class="add-member-btn" onclick="addMember('${groupId}')">Add Member</button>
-                            </div>
+                            <button onclick="showAddMemberModal('${groupId}')">Add</button>
+                            <button onclick="showGroupMembers('${groupId}')">Members</button>
                         ` : ''}
                     </div>
                 `;
@@ -384,14 +486,6 @@
                 groupDiv.onclick = () => selectGroup(groupId);
                 groupListDiv.appendChild(groupDiv);
             });
-
-            // If selected group no longer exists, clear selection
-            if (selectedGroup && !groups.has(selectedGroup)) {
-                selectedGroup = null;
-                document.getElementById('chatHeader').textContent = 'Select a chat';
-                document.getElementById('messageInput').disabled = true;
-                document.querySelector('#messageForm button').disabled = true;
-            }
         }
 
         function selectUser(user) {
@@ -456,6 +550,18 @@
                 document.getElementById('messageInput').disabled = false;
                 document.querySelector('#messageForm button').disabled = false;
                 document.getElementById('messageInput').focus();
+                
+                // Clear messages for new conversation
+                document.getElementById('messages').innerHTML = '';
+                
+                // Request group message history
+                const historyRequest = {
+                    type: 'get_group_history',
+                    group_id: groupId,
+                    timestamp: new Date().toISOString()
+                };
+                console.log('Requesting group message history:', historyRequest);
+                ws.send(JSON.stringify(historyRequest));
             } else {
                 console.error('Group not found:', groupId);
                 document.getElementById('chatHeader').textContent = 'Select a chat';
@@ -464,29 +570,136 @@
             }
         }
 
-        function createGroup() {
-            const groupName = document.getElementById('newGroupName').value.trim();
-            if (groupName) {
-                // Validate group name (no spaces or special characters)
-                if (!/^[a-zA-Z0-9_-]+$/.test(groupName)) {
-                    alert('Group name can only contain letters, numbers, underscores, and hyphens');
-                    return;
-                }
+        function showCreateGroupModal() {
+            document.getElementById('createGroupModal').classList.add('active');
+            updateMemberSelect();
+        }
 
-                const message = {
-                    type: 'group_create',
-                    from: username,
-                    group_name: groupName,
-                    timestamp: new Date().toISOString()
-                };
-                console.log('Creating group:', message);
-                ws.send(JSON.stringify(message));
-                document.getElementById('newGroupName').value = '';
-                document.querySelector('.group-controls button').disabled = true;
-                setTimeout(() => {
-                    document.querySelector('.group-controls button').disabled = false;
-                }, 1000);
+        function hideCreateGroupModal() {
+            document.getElementById('createGroupModal').classList.remove('active');
+            document.getElementById('newGroupName').value = '';
+            document.getElementById('selectedMembers').innerHTML = '';
+        }
+
+        function updateMemberSelect() {
+            const select = document.getElementById('memberSelect');
+            select.innerHTML = '<option value="">Select a user...</option>';
+            
+            users.forEach(user => {
+                if (user !== username) {
+                    const option = document.createElement('option');
+                    option.value = user;
+                    option.textContent = user;
+                    select.appendChild(option);
+                }
+            });
+        }
+
+        function addSelectedMember() {
+            const select = document.getElementById('memberSelect');
+            const member = select.value;
+            if (member) {
+                const selectedMembers = document.getElementById('selectedMembers');
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'member-item';
+                memberDiv.innerHTML = `
+                    <span>${member}</span>
+                    <button class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+                `;
+                selectedMembers.appendChild(memberDiv);
+                select.value = '';
             }
+        }
+
+        function createGroupWithMembers() {
+            const groupName = document.getElementById('newGroupName').value.trim();
+            if (!groupName) {
+                alert('Please enter a group name');
+                return;
+            }
+
+            // Validate group name (no spaces or special characters)
+            if (!/^[a-zA-Z0-9_-]+$/.test(groupName)) {
+                alert('Group name can only contain letters, numbers, underscores, and hyphens');
+                return;
+            }
+
+            const selectedMembers = Array.from(document.getElementById('selectedMembers').children)
+                .map(div => div.querySelector('span').textContent);
+
+            const message = {
+                type: 'group_create',
+                from: username,
+                group_name: groupName,
+                members: selectedMembers,
+                timestamp: new Date().toISOString()
+            };
+            
+            console.log('Creating group with members:', message);
+            ws.send(JSON.stringify(message));
+            hideCreateGroupModal();
+        }
+
+        function showAddMemberModal(groupId) {
+            const group = groups.get(groupId);
+            if (!group) return;
+
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Add Member to ${group.name}</h3>
+                        <button class="close-modal" onclick="this.closest('.modal').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <select id="addMemberSelect-${groupId}" class="form-control">
+                            <option value="">Select a user...</option>
+                            ${Array.from(users)
+                                .filter(user => user !== username && !group.members.includes(user))
+                                .map(user => `<option value="${user}">${user}</option>`)
+                                .join('')}
+                        </select>
+                    </div>
+                    <div class="modal-footer">
+                        <button onclick="this.closest('.modal').remove()">Cancel</button>
+                        <button onclick="addMember('${groupId}')">Add Member</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function showGroupMembers(groupId) {
+            const group = groups.get(groupId);
+            if (!group) return;
+
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>${group.name} Members</h3>
+                        <button class="close-modal" onclick="this.closest('.modal').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="member-list">
+                            ${group.members.map(member => `
+                                <div class="member-item">
+                                    <span>${member}</span>
+                                    ${group.admin === username && member !== username ? `
+                                        <button class="remove-btn" onclick="removeMember('${groupId}', '${member}')">Remove</button>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button onclick="this.closest('.modal').remove()">Close</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
         }
 
         function sendMessage() {
@@ -544,16 +757,20 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message group';
             const group = groups.get(message.group_id);
-            messageDiv.innerHTML = `
-                <div class="message-header">
-                    ${message.from === username ? 'You' : message.from} 
-                    in ${group ? group.name : 'Unknown Group'}
-                    <small>${new Date(message.timestamp).toLocaleTimeString()}</small>
-                </div>
-                <div class="message-content">${message.content}</div>
-            `;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Only display if this is the currently selected group
+            if (message.group_id === selectedGroup) {
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        ${message.from === username ? 'You' : message.from} 
+                        in ${group ? group.name : 'Unknown Group'}
+                        <small>${new Date(message.timestamp).toLocaleTimeString()}</small>
+                    </div>
+                    <div class="message-content">${message.content}</div>
+                `;
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
         }
 
         function displaySystemMessage(message) {
@@ -572,6 +789,11 @@
             const messagesDiv = document.getElementById('messages');
             messagesDiv.innerHTML = ''; // Clear existing messages
             
+            if (!Array.isArray(history)) {
+                console.error('History is not an array:', history);
+                return;
+            }
+            
             history.forEach(message => {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message private';
@@ -583,6 +805,35 @@
                     <div class="message-header">
                         ${isFromMe ? 'You' : message.from} 
                         ${isToMe ? 'to You' : `to ${message.to}`}
+                        <small>${new Date(message.timestamp).toLocaleTimeString()}</small>
+                    </div>
+                    <div class="message-content">${message.content}</div>
+                `;
+                messagesDiv.appendChild(messageDiv);
+            });
+            
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function displayGroupHistory(history) {
+            console.log('Displaying group message history:', history);
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = ''; // Clear existing messages
+            
+            if (!Array.isArray(history)) {
+                console.error('Group history is not an array:', history);
+                return;
+            }
+            
+            history.forEach(message => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message group';
+                const group = groups.get(message.group_id);
+                
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        ${message.from === username ? 'You' : message.from} 
+                        in ${group ? group.name : 'Unknown Group'}
                         <small>${new Date(message.timestamp).toLocaleTimeString()}</small>
                     </div>
                     <div class="message-content">${message.content}</div>
