@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        #loginForm {
+            text-align: center;
+            margin: 50px auto;
+            max-width: 400px;
+        }
+        #chatContainer {
+            display: none;
+            height: 80vh;
+        }
+        .chat-section {
+            display: flex;
+            gap: 20px;
+            height: 100%;
+        }
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 15px;
+        }
+        .users-panel {
+            width: 200px;
+            border-right: 1px solid #eee;
+        }
+        .groups-panel {
+            width: 200px;
+            border-right: 1px solid #eee;
+        }
+        .chat-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .user-item, .group-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+        .user-item:hover, .group-item:hover {
+            background-color: #f0f2f5;
+        }
+        .user-item.active, .group-item.active {
+            background-color: #e3f2fd;
+        }
+        .online-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ccc;
+        }
+        .online-indicator.online {
+            background-color: #4caf50;
+        }
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 70%;
+        }
+        .message.private {
+            background-color: #e3f2fd;
+            margin-left: auto;
+        }
+        .message.group {
+            background-color: #f5f5f5;
+        }
+        .message.system {
+            background-color: #fff3e0;
+            text-align: center;
+            max-width: 100%;
+        }
+        .message-header {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .message-content {
+            word-wrap: break-word;
+        }
+        #messageForm {
+            display: flex;
+            gap: 10px;
+        }
+        #messageInput {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        .group-controls {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        .group-members {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: none;
+        }
+        .group-members.active {
+            display: block;
+        }
+        .member-list {
+            margin-top: 5px;
+        }
+        .member-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        .member-item:hover {
+            background-color: #e3f2fd;
+        }
+        .add-member-btn {
+            padding: 5px 10px;
+            font-size: 0.9em;
+            background-color: #4caf50;
+        }
+        .remove-member-btn {
+            padding: 5px 10px;
+            font-size: 0.9em;
+            background-color: #f44336;
+        }
+        .chat-header {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .user-status {
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="loginForm">
+            <h2>Enter Chat</h2>
+            <input type="text" id="usernameInput" placeholder="Enter your username">
+            <button onclick="login()">Join Chat</button>
+        </div>
+        <div id="chatContainer">
+            <div class="user-info">
+                <span>Logged in as: <strong id="currentUser"></strong></span>
+                <span class="user-status" id="connectionStatus">Connecting...</span>
+            </div>
+            <div class="chat-section">
+                <div class="panel users-panel">
+                    <h3>Users</h3>
+                    <div id="userList"></div>
+                </div>
+                <div class="panel groups-panel">
+                    <h3>Groups</h3>
+                    <div id="groupList"></div>
+                    <div class="group-controls">
+                        <input type="text" id="newGroupName" placeholder="New group name">
+                        <button onclick="createGroup()">Create Group</button>
+                    </div>
+                </div>
+                <div class="panel chat-panel">
+                    <div class="chat-header" id="chatHeader">Select a user or group to start chatting</div>
+                    <div id="messages"></div>
+                    <form id="messageForm" onsubmit="sendMessage(); return false;">
+                        <input type="text" id="messageInput" placeholder="Type a message..." disabled>
+                        <button type="submit" disabled>Send</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let username;
+        let selectedUser = null;
+        let selectedGroup = null;
+        let users = new Set();
+        let groups = new Map();
+        let pendingGroupSelection = null;  // Add this to track pending group selection
+
+        function login() {
+            username = document.getElementById('usernameInput').value.trim();
+            if (username) {
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('chatContainer').style.display = 'block';
+                document.getElementById('currentUser').textContent = username;
+                connect();
+            }
+        }
+
+        function connect() {
+            ws = new WebSocket('ws://' + window.location.host + '/ws?username=' + encodeURIComponent(username));
+            
+            ws.onopen = function() {
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').style.color = '#4caf50';
+            };
+            
+            ws.onclose = function() {
+                document.getElementById('connectionStatus').textContent = 'Disconnected - Reconnecting...';
+                document.getElementById('connectionStatus').style.color = '#f44336';
+                setTimeout(connect, 1000);
+            };
+            
+            ws.onmessage = function(event) {
+                const message = JSON.parse(event.data);
+                console.log('Received WebSocket message:', message);
+                switch(message.type) {
+                    case 'user_list':
+                        console.log('Received user list:', message.users);
+                        updateUserList(message.users);
+                        break;
+                    case 'group_list':
+                        console.log('Received group list:', message.groups);
+                        updateGroupList(message.groups);
+                        // After updating group list, check if we need to select a pending group
+                        if (pendingGroupSelection) {
+                            console.log('Found pending group selection:', pendingGroupSelection);
+                            console.log('Current groups Map:', groups);
+                            console.log('Checking if group exists:', groups.has(pendingGroupSelection));
+                            selectGroup(pendingGroupSelection);
+                            pendingGroupSelection = null;
+                        }
+                        break;
+                    case 'private_message':
+                        displayPrivateMessage(message);
+                        break;
+                    case 'group_message':
+                        displayGroupMessage(message);
+                        break;
+                    case 'system':
+                        displaySystemMessage(message);
+                        break;
+                    case 'group_created':
+                        console.log('Group created:', message);
+                        if (message.group_id) {
+                            // Instead of selecting immediately, store the group ID
+                            pendingGroupSelection = message.group_id;
+                            console.log('Stored pending group selection:', pendingGroupSelection);
+                        }
+                        break;
+                    case 'history':
+                        if (message.history) {
+                            displayHistory(message.history);
+                        }
+                        break;
+                }
+            };
+        }
+
+        function updateUserList(userList) {
+            console.log('Updating user list:', userList);
+            const userListDiv = document.getElementById('userList');
+            userListDiv.innerHTML = '';
+            users = new Set(Object.keys(userList));
+            
+            users.forEach(user => {
+                if (user !== username) { // Don't show self in user list
+                    const userDiv = document.createElement('div');
+                    userDiv.className = 'user-item' + (user === selectedUser ? ' active' : '');
+                    userDiv.setAttribute('data-username', user);
+                    userDiv.innerHTML = `
+                        <div class="online-indicator online"></div>
+                        <span>${user}</span>
+                    `;
+                    userDiv.onclick = () => selectUser(user);
+                    userListDiv.appendChild(userDiv);
+                }
+            });
+        }
+
+        function updateGroupList(groupList) {
+            console.log('Updating group list with data:', groupList);
+            const groupListDiv = document.getElementById('groupList');
+            groupListDiv.innerHTML = '';
+            
+            // Convert groupList object to Map
+            groups = new Map(Object.entries(groupList));
+            console.log('Converted groups Map:', groups);
+            console.log('Groups Map size:', groups.size);
+            console.log('Groups Map entries:', Array.from(groups.entries()));
+            
+            if (groups.size === 0) {
+                console.log('No groups available');
+                groupListDiv.innerHTML = '<div class="no-groups">No groups available</div>';
+                return;
+            }
+            
+            groups.forEach((group, groupId) => {
+                console.log('Processing group:', groupId, group);
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'group-item' + (groupId === selectedGroup ? ' active' : '');
+                groupDiv.setAttribute('data-group-id', groupId);
+                
+                const isAdmin = group.admin === username;
+                
+                groupDiv.innerHTML = `
+                    <div class="group-header">
+                        <span>${group.name}</span>
+                        <small>(${group.members ? group.members.length : 0} members)</small>
+                    </div>
+                    <div class="group-members ${groupId === selectedGroup ? 'active' : ''}">
+                        <div class="member-list">
+                            ${group.members ? group.members.map(member => `
+                                <div class="member-item">
+                                    <span>${member}</span>
+                                    ${isAdmin && member !== username ? 
+                                        `<button class="remove-member-btn" onclick="removeMember('${groupId}', '${member}')">Remove</button>` 
+                                        : ''}
+                                </div>
+                            `).join('') : ''}
+                        </div>
+                        ${isAdmin ? `
+                            <div class="add-member-controls">
+                                <select id="addMemberSelect-${groupId}">
+                                    ${Array.from(users)
+                                        .filter(user => !group.members.includes(user))
+                                        .map(user => `<option value="${user}">${user}</option>`)
+                                        .join('')}
+                                </select>
+                                <button class="add-member-btn" onclick="addMember('${groupId}')">Add Member</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+                
+                groupDiv.onclick = () => selectGroup(groupId);
+                groupListDiv.appendChild(groupDiv);
+            });
+
+            // If selected group no longer exists, clear selection
+            if (selectedGroup && !groups.has(selectedGroup)) {
+                selectedGroup = null;
+                document.getElementById('chatHeader').textContent = 'Select a chat';
+                document.getElementById('messageInput').disabled = true;
+                document.querySelector('#messageForm button').disabled = true;
+            }
+        }
+
+        function selectUser(user) {
+            console.log('Selecting user:', user);
+            selectedUser = user;
+            selectedGroup = null;
+            
+            // Update UI to show selected user
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.toggle('active', item.getAttribute('data-username') === user);
+            });
+            document.querySelectorAll('.group-item').forEach(item => item.classList.remove('active'));
+            
+            // Update chat header and enable message input
+            document.getElementById('chatHeader').textContent = `Chat with ${user}`;
+            document.getElementById('messageInput').disabled = false;
+            document.querySelector('#messageForm button').disabled = false;
+            document.getElementById('messageInput').focus();
+            
+            // Clear messages for new conversation
+            document.getElementById('messages').innerHTML = '';
+            
+            // Request message history
+            const historyRequest = {
+                type: 'get_history',
+                from: username,
+                to: user,
+                timestamp: new Date().toISOString()
+            };
+            console.log('Requesting message history:', historyRequest);
+            ws.send(JSON.stringify(historyRequest));
+        }
+
+        function selectGroup(groupId) {
+            console.log('Selecting group:', groupId);
+            console.log('Available groups:', groups);
+            console.log('Group exists check:', groups.has(groupId));
+            
+            if (!groups.has(groupId)) {
+                console.log('Group not found in current groups, storing as pending selection');
+                pendingGroupSelection = groupId;
+                return;
+            }
+
+            selectedGroup = groupId;
+            selectedUser = null;
+            
+            // Update UI
+            document.querySelectorAll('.group-item').forEach(item => {
+                item.classList.toggle('active', item.getAttribute('data-group-id') === groupId);
+            });
+            document.querySelectorAll('.group-members').forEach(item => {
+                item.classList.toggle('active', item.parentElement.getAttribute('data-group-id') === groupId);
+            });
+            document.querySelectorAll('.user-item').forEach(item => item.classList.remove('active'));
+            
+            const group = groups.get(groupId);
+            console.log('Selected group data:', group);
+            
+            if (group) {
+                document.getElementById('chatHeader').textContent = `Group: ${group.name}`;
+                document.getElementById('messageInput').disabled = false;
+                document.querySelector('#messageForm button').disabled = false;
+                document.getElementById('messageInput').focus();
+            } else {
+                console.error('Group not found:', groupId);
+                document.getElementById('chatHeader').textContent = 'Select a chat';
+                document.getElementById('messageInput').disabled = true;
+                document.querySelector('#messageForm button').disabled = true;
+            }
+        }
+
+        function createGroup() {
+            const groupName = document.getElementById('newGroupName').value.trim();
+            if (groupName) {
+                // Validate group name (no spaces or special characters)
+                if (!/^[a-zA-Z0-9_-]+$/.test(groupName)) {
+                    alert('Group name can only contain letters, numbers, underscores, and hyphens');
+                    return;
+                }
+
+                const message = {
+                    type: 'group_create',
+                    from: username,
+                    group_name: groupName,
+                    timestamp: new Date().toISOString()
+                };
+                console.log('Creating group:', message);
+                ws.send(JSON.stringify(message));
+                document.getElementById('newGroupName').value = '';
+                document.querySelector('.group-controls button').disabled = true;
+                setTimeout(() => {
+                    document.querySelector('.group-controls button').disabled = false;
+                }, 1000);
+            }
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const content = messageInput.value.trim();
+            
+            if (content && (selectedUser || selectedGroup)) {
+                const message = {
+                    type: selectedGroup ? 'group_message' : 'private_message',
+                    from: username,
+                    to: selectedUser,
+                    content: content,
+                    timestamp: new Date().toISOString(),
+                    group_id: selectedGroup
+                };
+                console.log('Sending message:', message);
+                ws.send(JSON.stringify(message));
+                messageInput.value = '';
+            }
+        }
+
+        function displayPrivateMessage(message) {
+            console.log('Displaying private message:', message);
+            
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message private';
+            
+            const isFromMe = message.from === username;
+            const isToMe = message.to === username;
+            
+            // Only display the message if:
+            // 1. We are the sender and the message is for the currently selected user, or
+            // 2. We are the recipient and the message is from the currently selected user
+            if ((isFromMe && message.to === selectedUser) || 
+                (isToMe && message.from === selectedUser)) {
+                console.log('Message will be displayed - matches current conversation');
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        ${isFromMe ? 'You' : message.from} 
+                        ${isToMe ? 'to You' : `to ${message.to}`}
+                        <small>${new Date(message.timestamp).toLocaleTimeString()}</small>
+                    </div>
+                    <div class="message-content">${message.content}</div>
+                `;
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            } else {
+                console.log('Message not displayed - not part of current conversation');
+            }
+        }
+
+        function displayGroupMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message group';
+            const group = groups.get(message.group_id);
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    ${message.from === username ? 'You' : message.from} 
+                    in ${group ? group.name : 'Unknown Group'}
+                    <small>${new Date(message.timestamp).toLocaleTimeString()}</small>
+                </div>
+                <div class="message-content">${message.content}</div>
+            `;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function displaySystemMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.innerHTML = `
+                <div class="message-content">${message.content}</div>
+            `;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function displayHistory(history) {
+            console.log('Displaying message history:', history);
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = ''; // Clear existing messages
+            
+            history.forEach(message => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message private';
+                
+                const isFromMe = message.from === username;
+                const isToMe = message.to === username;
+                
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        ${isFromMe ? 'You' : message.from} 
+                        ${isToMe ? 'to You' : `to ${message.to}`}
+                        <small>${new Date(message.timestamp).toLocaleTimeString()}</small>
+                    </div>
+                    <div class="message-content">${message.content}</div>
+                `;
+                messagesDiv.appendChild(messageDiv);
+            });
+            
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addMember(groupId) {
+            const select = document.getElementById(`addMemberSelect-${groupId}`);
+            const newMember = select.value;
+            if (newMember) {
+                const message = {
+                    type: 'group_add_member',
+                    from: username,
+                    group_id: groupId,
+                    member: newMember,
+                    timestamp: new Date().toISOString()
+                };
+                console.log('Adding member to group:', message);
+                ws.send(JSON.stringify(message));
+            }
+        }
+
+        function removeMember(groupId, member) {
+            const message = {
+                type: 'group_remove_member',
+                from: username,
+                group_id: groupId,
+                member: member,
+                timestamp: new Date().toISOString()
+            };
+            console.log('Removing member from group:', message);
+            ws.send(JSON.stringify(message));
+        }
+
+        // Handle Enter key in message input
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 
