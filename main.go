@@ -442,34 +442,61 @@ func sendToGroup(message Message) {
 }
 
 func sendGroupList() {
-	log.Printf("Starting sendGroupList()")
+	log.Printf("Sending group list to all clients")
+	clientsMux.Lock()
+	defer clientsMux.Unlock()
 
-	groupList := make(map[string]map[string]interface{})
-	for id, group := range groups {
-		members := make([]string, 0, len(group.Members))
-		for username := range group.Members {
-			members = append(members, username)
+	// Create a map to store groups for each user
+	userGroups := make(map[string]map[string]interface{})
+
+	// First, collect all groups for each user
+	for _, group := range groups {
+		// Add group to admin's list
+		if _, exists := userGroups[group.Admin]; !exists {
+			userGroups[group.Admin] = make(map[string]interface{})
 		}
-		groupList[id] = map[string]interface{}{
+		userGroups[group.Admin][group.ID] = map[string]interface{}{
 			"name":    group.Name,
-			"members": members,
 			"admin":   group.Admin,
+			"members": getGroupMemberUsernames(group),
 		}
-		log.Printf("Added group to list - ID: %s, Name: %s, Members: %v", id, group.Name, members)
+
+		// Add group to each member's list
+		for username := range group.Members {
+			if username != group.Admin { // Skip admin as we already added them
+				if _, exists := userGroups[username]; !exists {
+					userGroups[username] = make(map[string]interface{})
+				}
+				userGroups[username][group.ID] = map[string]interface{}{
+					"name":    group.Name,
+					"admin":   group.Admin,
+					"members": getGroupMemberUsernames(group),
+				}
+			}
+		}
 	}
 
-	messageBytes, err := json.Marshal(map[string]interface{}{
-		"type":   "group_list",
-		"groups": groupList,
-	})
-	if err != nil {
-		log.Printf("Error marshaling group list: %v", err)
-		return
+	// Send personalized group list to each user
+	for username, client := range clients {
+		if groups, exists := userGroups[username]; exists {
+			message := map[string]interface{}{
+				"type":   "group_list",
+				"groups": groups,
+			}
+			messageBytes, _ := json.Marshal(message)
+			client.send <- messageBytes
+			log.Printf("Sent group list to user %s with %d groups", username, len(groups))
+		} else {
+			// Send empty group list if user has no groups
+			message := map[string]interface{}{
+				"type":   "group_list",
+				"groups": make(map[string]interface{}),
+			}
+			messageBytes, _ := json.Marshal(message)
+			client.send <- messageBytes
+			log.Printf("Sent empty group list to user %s", username)
+		}
 	}
-
-	log.Printf("Broadcasting group list: %+v", groupList)
-	broadcastMessage(messageBytes)
-	log.Printf("Finished sendGroupList()")
 }
 
 func broadcastMessage(message []byte) {
@@ -679,4 +706,12 @@ func removeGroupMember(message Message) {
 		// Update group list for all clients
 		sendGroupList()
 	}
+}
+
+func getGroupMemberUsernames(group *Group) []string {
+	members := make([]string, 0, len(group.Members))
+	for username := range group.Members {
+		members = append(members, username)
+	}
+	return members
 }
