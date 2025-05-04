@@ -32,7 +32,7 @@ type Message struct {
 	Member    string `json:"member"`     // member username for group operations
 }
 
-// MessageStore represents a conversation between two users
+// MessageStore represents a conversation between two users or a group
 type MessageStore struct {
 	Messages []Message
 	mu       sync.RWMutex
@@ -73,21 +73,37 @@ func getConversationKey(user1, user2 string) string {
 
 // storeMessage stores a message in the message history
 func storeMessage(msg Message) {
-	if msg.Type != "private_message" {
+	if msg.Type != "private_message" && msg.Type != "group_message" {
 		return
 	}
 
-	key := getConversationKey(msg.From, msg.To)
-	messageStoreMux.Lock()
-	if _, exists := messageStore[key]; !exists {
-		messageStore[key] = &MessageStore{
-			Messages: make([]Message, 0),
+	if msg.Type == "private_message" {
+		key := getConversationKey(msg.From, msg.To)
+		messageStoreMux.Lock()
+		if _, exists := messageStore[key]; !exists {
+			messageStore[key] = &MessageStore{
+				Messages: make([]Message, 0),
+			}
 		}
+		messageStore[key].mu.Lock()
+		messageStore[key].Messages = append(messageStore[key].Messages, msg)
+		messageStore[key].mu.Unlock()
+		messageStoreMux.Unlock()
+		log.Printf("Stored private message in conversation %s: %+v", key, msg)
+	} else if msg.Type == "group_message" {
+		key := "group:" + msg.GroupID
+		messageStoreMux.Lock()
+		if _, exists := messageStore[key]; !exists {
+			messageStore[key] = &MessageStore{
+				Messages: make([]Message, 0),
+			}
+		}
+		messageStore[key].mu.Lock()
+		messageStore[key].Messages = append(messageStore[key].Messages, msg)
+		messageStore[key].mu.Unlock()
+		messageStoreMux.Unlock()
+		log.Printf("Stored group message in group %s: %+v", key, msg)
 	}
-	messageStore[key].mu.Lock()
-	messageStore[key].Messages = append(messageStore[key].Messages, msg)
-	messageStore[key].mu.Unlock()
-	messageStoreMux.Unlock()
 }
 
 // getConversationHistory returns the message history for a conversation
@@ -98,6 +114,7 @@ func getConversationHistory(user1, user2 string) []Message {
 	messageStoreMux.RUnlock()
 
 	if !exists {
+		log.Printf("No message history found for conversation %s", key)
 		return []Message{}
 	}
 
@@ -106,6 +123,28 @@ func getConversationHistory(user1, user2 string) []Message {
 	copy(messages, store.Messages)
 	store.mu.RUnlock()
 
+	log.Printf("Retrieved %d messages for conversation %s", len(messages), key)
+	return messages
+}
+
+// getGroupHistory returns the message history for a group
+func getGroupHistory(groupID string) []Message {
+	key := "group:" + groupID
+	messageStoreMux.RLock()
+	store, exists := messageStore[key]
+	messageStoreMux.RUnlock()
+
+	if !exists {
+		log.Printf("No message history found for group %s", key)
+		return []Message{}
+	}
+
+	store.mu.RLock()
+	messages := make([]Message, len(store.Messages))
+	copy(messages, store.Messages)
+	store.mu.RUnlock()
+
+	log.Printf("Retrieved %d messages for group %s", len(messages), key)
 	return messages
 }
 
@@ -220,6 +259,8 @@ func (c *Client) readPump() {
 				clientsMux.Unlock()
 
 				if recipientExists {
+					// Store the message before sending
+					storeMessage(msg)
 					sendToUser(msg)
 				} else {
 					log.Printf("Recipient %s not found for message from %s", msg.To, msg.From)
@@ -245,10 +286,25 @@ func (c *Client) readPump() {
 					"to":      msg.To,
 					"history": history,
 				})
+				log.Printf("Sending private history response: %+v", history)
+				c.send <- historyBytes
+			}
+		case "get_group_history":
+			// Handle group history request
+			if msg.GroupID != "" {
+				history := getGroupHistory(msg.GroupID)
+				historyBytes, _ := json.Marshal(map[string]interface{}{
+					"type":     "group_history",
+					"group_id": msg.GroupID,
+					"history":  history,
+				})
+				log.Printf("Sending group history response: %+v", history)
 				c.send <- historyBytes
 			}
 		case "group_message":
 			if msg.GroupID != "" {
+				// Store the message before sending
+				storeMessage(msg)
 				sendToGroup(msg)
 			} else {
 				log.Printf("Group message missing group ID: %+v", msg)
@@ -311,9 +367,6 @@ func sendToUser(message Message) {
 		log.Printf("Error marshaling message: %v", err)
 		return
 	}
-
-	// Store the message in history
-	storeMessage(message)
 
 	// Find recipient by username
 	var recipientFound bool
