@@ -2,6 +2,105 @@
 
 A real-time chat application built with Go and React, featuring private messaging and group chat functionality.
 
+## System Architecture
+
+### Application Flow
+```mermaid
+graph TD
+    subgraph "Client Browser"
+        A[React App] --> B[WebSocket Connection]
+        A --> C[Static Files]
+    end
+
+    subgraph "Go Server :8080"
+        D[HTTP Server] --> E[Static File Server]
+        D --> F[WebSocket Handler]
+        F --> G[Message Processor]
+        G --> H[Message Store]
+        G --> I[Client Manager]
+    end
+
+    B <--> F
+    C <-- Served by --> E
+```
+
+### WebSocket Communication Flow
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+    participant Store
+
+    Client->>Server: Connect WebSocket
+    Server->>Client: Connection Established
+    
+    Note over Client,Server: Private Message Flow
+    Client->>Server: Send Private Message
+    Server->>Store: Store Message
+    Server->>Client: Message Delivered
+    Server->>Client: Update Unread Count
+    
+    Note over Client,Server: Group Message Flow
+    Client->>Server: Send Group Message
+    Server->>Store: Store Message
+    Server->>Client: Message Delivered
+    Server->>Client: Update Unread Count
+    
+    Note over Client,Server: Chat Selection
+    Client->>Server: Select Chat
+    Server->>Store: Get Message History
+    Server->>Client: Send History
+    Client->>Server: Update Last Seen
+    Server->>Store: Update Timestamp
+```
+
+### Message Handling Flow
+```mermaid
+graph TD
+    A[WebSocket Message] --> B{Message Type}
+    B -->|Private Message| C[Process Private]
+    B -->|Group Message| D[Process Group]
+    B -->|System Message| E[Process System]
+    B -->|History Request| F[Process History]
+    
+    C --> G[Update Unread Count]
+    D --> G
+    E --> H[Broadcast Update]
+    F --> I[Send History]
+    
+    G --> J[Store Message]
+    H --> K[Update Clients]
+    I --> L[Send Messages]
+```
+
+### Server Architecture
+```mermaid
+graph TD
+    subgraph "Go Server :8080"
+        A[HTTP Server] --> B[Static File Server]
+        A --> C[WebSocket Handler]
+        
+        B --> D[React Build Files]
+        
+        C --> E[Message Router]
+        E --> F[Private Handler]
+        E --> G[Group Handler]
+        E --> H[System Handler]
+        
+        F --> I[Message Store]
+        G --> I
+        H --> I
+    end
+
+    subgraph "Client"
+        J[Browser] --> K[React App]
+        K --> L[WebSocket Client]
+    end
+
+    L <--> C
+    J --> B
+```
+
 ## Features
 
 - Real-time messaging using WebSocket
