@@ -353,7 +353,7 @@ const Chat = () => {
                         opacity: 0.7
                       }}
                     >
-                      {new Date(msg.timestamp).toLocaleTimeString()}
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Typography>
                   </Box>
                 </Box>
