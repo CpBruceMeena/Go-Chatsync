@@ -6,68 +6,24 @@ A real-time chat application built with Go and React, featuring private messagin
 
 - Real-time messaging using WebSocket
 - Private messaging between users
-- Group chat support
-- User presence tracking
-- Modern Material-UI interface
+- Group chat functionality
+  - Create new groups
+  - Add/remove members
+  - Group-specific message history
+- Modern UI with Material-UI components
 - Responsive design
-- Message history (non-persistent)
+- Message history persistence
+- User presence tracking
 
-## Tech Stack
+## Project Structure
 
-### Backend
-- Go 1.21
-- Gorilla WebSocket
-- In-memory message storage
-
-### Frontend
-- React
-- Material-UI
-- WebSocket client
-- Context-based state management
-
-## Prerequisites
-
-- Go 1.21 or higher
-- Node.js and npm
-- Modern web browser
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/Go-Chatsync.git
-cd Go-Chatsync
-```
-
-2. Run the application:
-```bash
-./run.sh
-```
-
-The script will:
-- Install Go dependencies
-- Install frontend dependencies
-- Build the React app
-- Build the Go binary
-- Start the server
-
-## Usage
-
-1. Open your browser and navigate to http://localhost:8080
-2. Enter a username to start chatting
-3. Features available:
-   - Private messaging: Click on a user to start a private chat
-   - Group chat: Create a group and add members
-   - Real-time updates: See messages instantly
-   - User presence: See who's online
-
-## Development
-
-### Project Structure
 ```
 .
 ├── frontend/           # React application
 │   ├── src/           # Source code
+│   │   ├── components/    # React components
+│   │   ├── contexts/      # React contexts
+│   │   └── theme.js       # Material-UI theme
 │   ├── public/        # Static files
 │   ├── package.json   # Frontend dependencies
 │   └── README.md      # Frontend documentation
@@ -80,53 +36,76 @@ The script will:
 └── run.sh            # Build and run script
 ```
 
-### Running in Development Mode
+## Getting Started
 
-1. Start the backend:
-```bash
-cd backend
-go run main.go
-```
+### Prerequisites
 
-2. Start the frontend development server:
-```bash
-cd frontend
-npm start
-```
+- Go 1.16 or later
+- Node.js 14 or later
+- npm or yarn
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/CpBruceMeena/Go-Chatsync.git
+   cd Go-Chatsync
+   ```
+
+2. Install frontend dependencies:
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+3. Install backend dependencies:
+   ```bash
+   cd ../backend
+   go mod download
+   ```
+
+### Running the Application
+
+1. Start the application using the provided script:
+   ```bash
+   ./run.sh
+   ```
+
+   This will:
+   - Build the frontend
+   - Start the backend server
+   - Serve the application at http://localhost:8080
 
 ## Features in Detail
 
-### Real-time Messaging
-- Instant message delivery
-- Message history for current session
-- Support for private and group messages
+### Private Messaging
+- One-to-one chat between users
+- Real-time message delivery
+- Message history persistence
+- Online/offline status indicators
+
+### Group Chat
+- Create new groups with custom names
+- Add or remove members from groups
+- Group-specific message history
+- Member count display
+- Group visibility limited to members only
 
 ### User Interface
-- Clean, modern design with Material-UI
+- Clean and modern Material-UI design
 - Responsive layout
-- User presence indicators
-- Message timestamps
-- Clear visual hierarchy
-
-### Group Management
-- Create new groups
-- Add/remove members
-- Group chat functionality
-
-### Technical Features
-- WebSocket communication
+- Intuitive navigation
 - Real-time updates
-- Connection management
-- Error handling
-- State management
+- Message timestamps
+- User presence indicators
 
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
