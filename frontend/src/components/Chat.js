@@ -330,7 +330,7 @@ const Chat = () => {
                       position: 'relative'
                     }}
                   >
-                    {msg.from !== username && (
+                    {msg.from !== username && selectedChat?.type === 'group' && (
                       <Typography 
                         variant="caption" 
                         sx={{ 
