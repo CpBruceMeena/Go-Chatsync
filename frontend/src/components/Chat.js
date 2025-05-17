@@ -38,19 +38,24 @@ const Chat = () => {
     selectedChat,
     setSelectedChat,
     sendMessage,
-    createGroup
+    createGroup,
+    addGroupMember,
+    removeGroupMember,
+    setMessages
   } = useWebSocket();
 
   const [newMessage, setNewMessage] = useState('');
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [scrollToBottom]);
@@ -77,25 +82,42 @@ const Chat = () => {
     console.log('Current groups state:', groups);
   }, [groups]);
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (newMessage.trim() && selectedChat) {
-      const message = {
-        type: selectedChat.type === 'private' ? 'private_message' : 'group_message',
-        from: username,
-        content: newMessage.trim(),
-        to: selectedChat.id,
-        timestamp: new Date().toISOString()
-      };
-      console.log('Chat: Sending message:', {
-        message,
-        selectedChat,
-        username
-      });
-      sendMessage(message);
-      setNewMessage('');
-    }
+  const handleChatSelect = (type, id) => {
+    console.log('Chat: Selecting chat:', { type, id });
+    setSelectedChat({ type, id });
+    // Clear messages when switching chats - they will be loaded from history
+    setMessages([]);
   };
+
+  const handleSendMessage = (content) => {
+    if (!content.trim() || !selectedChat) return;
+
+    const message = {
+      type: selectedChat.type === 'private' ? 'private_message' : 'group_message',
+      to: selectedChat.id,
+      content: content.trim()
+    };
+
+    sendMessage(message);
+    setNewMessage(''); // Clear the input field after sending
+  };
+
+  // Filter messages for the selected chat
+  const filteredMessages = useMemo(() => {
+    if (!selectedChat) return [];
+    
+    if (selectedChat.type === 'private') {
+      return messages.filter(msg => 
+        msg.type === 'private_message' && 
+        ((msg.from === selectedChat.id && msg.to === username) || 
+         (msg.from === username && msg.to === selectedChat.id))
+      );
+    }
+    
+    return messages.filter(msg => 
+      msg.type === 'group_message' && msg.to === selectedChat.id
+    );
+  }, [messages, selectedChat, username]);
 
   const handleCreateGroup = () => {
     if (newGroupName.trim() && selectedMembers.length > 0) {
@@ -160,33 +182,6 @@ const Chat = () => {
     return stats;
   }, [messages, username]);
 
-  // Memoize filtered messages
-  const filteredMessages = useMemo(() => {
-    const filtered = messages.filter(isMessageForCurrentChat);
-    console.log('Chat: Filtered messages:', {
-      allMessages: messages,
-      filtered,
-      selectedChat,
-      username,
-      messageCount: messages.length,
-      filteredCount: filtered.length,
-      filterDetails: messages.map(msg => ({
-        message: msg,
-        isRelevant: isMessageForCurrentChat(msg),
-        reason: !selectedChat ? 'No chat selected' :
-                selectedChat.type === 'private' ? 
-                  (msg.type === 'private_message' ? 
-                    ((msg.from === username && msg.to === selectedChat.id) ? 'Sent to selected user' :
-                     (msg.from === selectedChat.id && msg.to === username) ? 'Received from selected user' :
-                     'Not relevant to selected chat') :
-                   'Not a private message') :
-                  (msg.type === 'group_message' && msg.to === selectedChat.id) ? 'Group message' :
-                  'Not a group message'
-      }))
-    });
-    return filtered;
-  }, [messages, isMessageForCurrentChat, selectedChat, username]);
-
   return (
     <Box sx={{ display: 'flex', height: '100vh', p: 2 }}>
       {/* Sidebar */}
@@ -206,7 +201,7 @@ const Chat = () => {
                   selected={selectedChat?.type === 'private' && selectedChat?.id === user}
                   onClick={() => {
                     console.log('Selecting chat with user:', user);
-                    setSelectedChat({ type: 'private', id: user, username: user });
+                    handleChatSelect('private', user);
                   }}
                 >
                   <PersonIcon sx={{ mr: 1 }} />
@@ -227,7 +222,7 @@ const Chat = () => {
             <ListItem key={id} disablePadding>
               <ListItemButton
                 selected={selectedChat?.type === 'group' && selectedChat?.id === id}
-                onClick={() => setSelectedChat({ type: 'group', id, name: group.name })}
+                onClick={() => handleChatSelect('group', id)}
               >
                 <GroupIcon sx={{ mr: 1 }} />
                 <ListItemText 
@@ -252,26 +247,28 @@ const Chat = () => {
         </Box>
         {selectedChat ? (
           <>
-            <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
-              {filteredMessages.map((message) => (
+            <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {filteredMessages.map((msg) => (
                 <Box
-                  key={`${message.from}-${message.timestamp}`}
+                  key={`${msg.from}-${msg.timestamp}-${msg.content}`}
                   sx={{
                     display: 'flex',
-                    justifyContent: message.from === username ? 'flex-end' : 'flex-start',
-                    mb: 2
+                    justifyContent: msg.from === username ? 'flex-end' : 'flex-start',
+                    mb: 1
                   }}
                 >
                   <Paper
+                    elevation={1}
                     sx={{
-                      p: 2,
-                      backgroundColor: message.from === username ? 'primary.light' : 'grey.100',
-                      maxWidth: '70%'
+                      p: 1,
+                      maxWidth: '70%',
+                      backgroundColor: msg.from === username ? 'primary.light' : 'grey.100',
+                      color: msg.from === username ? 'white' : 'text.primary'
                     }}
                   >
-                    <Typography variant="body1">{message.content}</Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      {new Date(message.timestamp).toLocaleTimeString()}
+                    <Typography variant="body1">{msg.content}</Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.7 }}>
+                      {new Date(msg.timestamp).toLocaleTimeString()}
                     </Typography>
                   </Paper>
                 </Box>
@@ -280,7 +277,18 @@ const Chat = () => {
             </Box>
             <Box
               component="form"
-              onSubmit={handleSendMessage}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newMessage.trim() && selectedChat) {
+                  const message = {
+                    type: selectedChat.type === 'private' ? 'private_message' : 'group_message',
+                    to: selectedChat.id,
+                    content: newMessage.trim()
+                  };
+                  sendMessage(message);
+                  setNewMessage(''); // Clear the input field
+                }
+              }}
               sx={{ p: 2, borderTop: 1, borderColor: 'divider', display: 'flex', gap: 1 }}
             >
               <TextField
@@ -291,7 +299,11 @@ const Chat = () => {
                 variant="outlined"
                 size="small"
               />
-              <IconButton type="submit" color="primary">
+              <IconButton 
+                type="submit" 
+                color="primary"
+                disabled={!newMessage.trim()}
+              >
                 <SendIcon />
               </IconButton>
             </Box>

@@ -74,7 +74,6 @@ export const WebSocketProvider = ({ children }) => {
         setUsers(Object.keys(message.users));
         break;
       case 'group_list': {
-        // Convert array of groups to object with group ID as key
         const groupsMap = message.groups.reduce((acc, group) => {
           acc[group.name] = group;
           return acc;
@@ -85,15 +84,13 @@ export const WebSocketProvider = ({ children }) => {
       }
       case 'private_message':
       case 'group_message':
-        setMessages(prev => {
-          const newMessages = [...prev, message];
-          console.log('WebSocketContext: Added received message to state:', {
-            message,
-            previousCount: prev.length,
-            newCount: newMessages.length
-          });
-          return newMessages;
-        });
+        if (message.from !== username) {
+          setMessages(prev => [...prev, message]);
+        }
+        break;
+      case 'history':
+        console.log('WebSocketContext: Received message history:', message.content);
+        setMessages(message.content);
         break;
       case 'system':
         console.log('System message:', message.content);
@@ -101,15 +98,14 @@ export const WebSocketProvider = ({ children }) => {
       default:
         console.log('Unknown message type:', message.type);
     }
-  }, [setUsers, setGroups, setMessages]);
+  }, [username]);
 
   const sendMessage = useCallback((message) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // Ensure the from field is set
       const messageToSend = {
         ...message,
-        from: username,  // Ensure from field is set
-        timestamp: new Date().toISOString()  // Ensure timestamp is set
+        from: username,
+        timestamp: new Date().toISOString()
       };
       console.log('WebSocketContext: Sending message:', {
         message: messageToSend,
@@ -117,22 +113,37 @@ export const WebSocketProvider = ({ children }) => {
         selectedChat,
         username
       });
+      
+      setMessages(prev => [...prev, messageToSend]);
+      
       wsRef.current.send(JSON.stringify(messageToSend));
-      // Add the message to local state immediately
-      setMessages(prev => {
-        const newMessages = [...prev, messageToSend];
-        console.log('WebSocketContext: Added sent message to state:', {
-          message: messageToSend,
-          previousCount: prev.length,
-          newCount: newMessages.length
-        });
-        return newMessages;
-      });
       console.log('WebSocketContext: Message sent successfully');
     } else {
       console.error('WebSocketContext: WebSocket is not connected');
     }
   }, [username, selectedChat]);
+
+  // Function to request message history
+  const requestMessageHistory = useCallback((chatType, chatId) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const message = {
+        type: 'request_history',
+        to: chatType,
+        content: chatId,
+        timestamp: new Date().toISOString()
+      };
+      console.log('WebSocketContext: Requesting message history:', message);
+      wsRef.current.send(JSON.stringify(message));
+    }
+  }, []);
+
+  // Effect to request message history when chat is selected
+  useEffect(() => {
+    if (selectedChat) {
+      console.log('Chat selected, requesting history:', selectedChat);
+      requestMessageHistory(selectedChat.type, selectedChat.id);
+    }
+  }, [selectedChat, requestMessageHistory]);
 
   const createGroup = (groupName, members) => {
     if (!wsRef.current) {
