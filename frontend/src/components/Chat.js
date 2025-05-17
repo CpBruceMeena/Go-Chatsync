@@ -184,9 +184,18 @@ const Chat = () => {
   }, [messages, username]);
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', p: 2 }}>
+    <Box sx={{ display: 'flex', height: '100vh', p: 2, bgcolor: 'background.default' }}>
       {/* Sidebar */}
-      <Paper sx={{ width: 300, mr: 2, display: 'flex', flexDirection: 'column' }}>
+      <Paper 
+        sx={{ 
+          width: 300, 
+          mr: 2, 
+          display: 'flex', 
+          flexDirection: 'column',
+          bgcolor: 'background.paper',
+          boxShadow: 3
+        }}
+      >
         <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6">Users ({users.length})</Typography>
         </Box>
@@ -196,9 +205,19 @@ const Chat = () => {
             user !== username && (
               <ListItem key={user} disablePadding>
                 <ListItemButton
-                  selected={selectedChat?.type === 'private' && selectedChat?.name === user}
+                  selected={selectedChat?.type === 'private' && selectedChat?.id === user}
                   onClick={() => handleChatSelect('private', user)}
+                  sx={{
+                    '&.Mui-selected': {
+                      bgcolor: 'primary.light',
+                      color: 'white',
+                      '&:hover': {
+                        bgcolor: 'primary.main',
+                      }
+                    }
+                  }}
                 >
+                  <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
                   <ListItemText primary={user} />
                 </ListItemButton>
               </ListItem>
@@ -226,9 +245,19 @@ const Chat = () => {
           {Object.entries(groups).map(([groupName, group]) => (
             <ListItem key={groupName} disablePadding>
               <ListItemButton
-                selected={selectedChat?.type === 'group' && selectedChat?.name === groupName}
+                selected={selectedChat?.type === 'group' && selectedChat?.id === groupName}
                 onClick={() => handleChatSelect('group', groupName)}
+                sx={{
+                  '&.Mui-selected': {
+                    bgcolor: 'primary.light',
+                    color: 'white',
+                    '&:hover': {
+                      bgcolor: 'primary.main',
+                    }
+                  }
+                }}
               >
+                <GroupIcon sx={{ mr: 1, color: 'primary.main' }} />
                 <ListItemText 
                   primary={groupName}
                   secondary={`${group.members.length} members`}
@@ -240,18 +269,47 @@ const Chat = () => {
       </Paper>
 
       {/* Chat Area */}
-      <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Paper 
+        sx={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          bgcolor: 'background.paper',
+          boxShadow: 3
+        }}
+      >
+        <Box 
+          sx={{ 
+            p: 2, 
+            borderBottom: 1, 
+            borderColor: 'divider', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            bgcolor: 'primary.main',
+            color: 'white'
+          }}
+        >
           <Typography variant="h6">
             {selectedChat ? (selectedChat.type === 'private' ? selectedChat.id : groups[selectedChat.id]?.name) : 'Select a chat'}
           </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
+          <Typography variant="subtitle1">
             Logged in as: {username}
           </Typography>
         </Box>
         {selectedChat ? (
           <>
-            <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box 
+              sx={{ 
+                flex: 1, 
+                overflow: 'auto', 
+                p: 2, 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 1,
+                bgcolor: 'background.default'
+              }}
+            >
               {filteredMessages.map((msg) => (
                 <Box
                   key={`${msg.from}-${msg.timestamp}-${msg.content}`}
@@ -261,20 +319,43 @@ const Chat = () => {
                     mb: 1
                   }}
                 >
-                  <Paper
-                    elevation={1}
+                  <Box
                     sx={{
-                      p: 1,
                       maxWidth: '70%',
-                      backgroundColor: msg.from === username ? 'primary.light' : 'grey.100',
-                      color: msg.from === username ? 'white' : 'text.primary'
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: msg.from === username ? 'primary.main' : 'secondary.main',
+                      color: msg.from === username ? 'white' : 'text.primary',
+                      boxShadow: 1,
+                      position: 'relative'
                     }}
                   >
+                    {msg.from !== username && (
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          display: 'block', 
+                          mb: 0.5,
+                          color: msg.from === username ? 'white' : 'text.secondary',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        {msg.from}
+                      </Typography>
+                    )}
                     <Typography variant="body1">{msg.content}</Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.7 }}>
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        display: 'block', 
+                        mt: 0.5,
+                        color: msg.from === username ? 'white' : 'text.secondary',
+                        opacity: 0.7
+                      }}
+                    >
                       {new Date(msg.timestamp).toLocaleTimeString()}
                     </Typography>
-                  </Paper>
+                  </Box>
                 </Box>
               ))}
               <div ref={messagesEndRef} />
@@ -290,10 +371,17 @@ const Chat = () => {
                     content: newMessage.trim()
                   };
                   sendMessage(message);
-                  setNewMessage(''); // Clear the input field
+                  setNewMessage('');
                 }
               }}
-              sx={{ p: 2, borderTop: 1, borderColor: 'divider', display: 'flex', gap: 1 }}
+              sx={{ 
+                p: 2, 
+                borderTop: 1, 
+                borderColor: 'divider', 
+                display: 'flex', 
+                gap: 1,
+                bgcolor: 'background.paper'
+              }}
             >
               <TextField
                 fullWidth
@@ -302,18 +390,44 @@ const Chat = () => {
                 placeholder="Type a message..."
                 variant="outlined"
                 size="small"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&:hover fieldset': {
+                      borderColor: 'primary.main',
+                    },
+                  },
+                }}
               />
               <IconButton 
                 type="submit" 
                 color="primary"
                 disabled={!newMessage.trim()}
+                sx={{
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  '&:hover': {
+                    bgcolor: 'primary.dark',
+                  },
+                  '&.Mui-disabled': {
+                    bgcolor: 'grey.300',
+                    color: 'grey.500'
+                  }
+                }}
               >
                 <SendIcon />
               </IconButton>
             </Box>
           </>
         ) : (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              height: '100%',
+              bgcolor: 'background.default'
+            }}
+          >
             <Typography color="text.secondary">Select a chat to start messaging</Typography>
           </Box>
         )}
