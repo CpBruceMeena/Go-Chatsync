@@ -321,8 +321,8 @@ const Chat = () => {
                 >
                   <Box
                     sx={{
-                      maxWidth: '70%',
-                      p: 2,
+                      maxWidth: '50%',
+                      p: 1,
                       borderRadius: 2,
                       bgcolor: msg.from === username ? 'primary.main' : 'secondary.main',
                       color: msg.from === username ? 'white' : 'text.primary',
@@ -337,24 +337,37 @@ const Chat = () => {
                           display: 'block', 
                           mb: 0.5,
                           color: msg.from === username ? 'white' : 'text.secondary',
-                          fontWeight: 'bold'
+                          fontWeight: 'bold',
+                          fontSize: '0.7rem'
                         }}
                       >
                         {msg.from}
                       </Typography>
                     )}
-                    <Typography variant="body1">{msg.content}</Typography>
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        display: 'block', 
-                        mt: 0.5,
-                        color: msg.from === username ? 'white' : 'text.secondary',
-                        opacity: 0.7
-                      }}
-                    >
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 0.5 }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontSize: '0.8rem',
+                          lineHeight: 1.3,
+                          pr: 0.5
+                        }}
+                      >
+                        {msg.content}
+                      </Typography>
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          color: msg.from === username ? 'white' : 'text.secondary',
+                          opacity: 0.7,
+                          fontSize: '0.65rem',
+                          whiteSpace: 'nowrap',
+                          alignSelf: 'flex-end'
+                        }}
+                      >
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Typography>
+                    </Box>
                   </Box>
                 </Box>
               ))}
