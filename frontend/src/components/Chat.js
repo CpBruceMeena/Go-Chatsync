@@ -189,6 +189,25 @@ const Chat = () => {
       <Paper sx={{ width: 300, mr: 2, display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6">Users ({users.length})</Typography>
+        </Box>
+        <Divider />
+        <List sx={{ flex: 1, overflow: 'auto' }}>
+          {users.map((user) => (
+            user !== username && (
+              <ListItem key={user} disablePadding>
+                <ListItemButton
+                  selected={selectedChat?.type === 'private' && selectedChat?.name === user}
+                  onClick={() => handleChatSelect('private', user)}
+                >
+                  <ListItemText primary={user} />
+                </ListItemButton>
+              </ListItem>
+            )
+          ))}
+        </List>
+        <Divider />
+        <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="h6">Groups ({Object.keys(groups).length})</Typography>
           <IconButton 
             onClick={() => setIsGroupDialogOpen(true)}
             sx={{
@@ -204,39 +223,14 @@ const Chat = () => {
         </Box>
         <Divider />
         <List sx={{ flex: 1, overflow: 'auto' }}>
-          {Array.isArray(users) && users.map((user) => (
-            user !== username && (
-              <ListItem key={user} disablePadding>
-                <ListItemButton
-                  selected={selectedChat?.type === 'private' && selectedChat?.id === user}
-                  onClick={() => {
-                    console.log('Selecting chat with user:', user);
-                    handleChatSelect('private', user);
-                  }}
-                >
-                  <PersonIcon sx={{ mr: 1 }} />
-                  <ListItemText primary={user} />
-                </ListItemButton>
-              </ListItem>
-            )
-          ))}
-        </List>
-        <Divider />
-        <Box sx={{ p: 2 }}>
-          <Typography variant="h6">Groups</Typography>
-        </Box>
-        <List sx={{ flex: 1, overflow: 'auto' }}>
-          {Object.entries(groups)
-            .filter(([_, group]) => group.members.includes(username))
-            .map(([id, group]) => (
-            <ListItem key={id} disablePadding>
+          {Object.entries(groups).map(([groupName, group]) => (
+            <ListItem key={groupName} disablePadding>
               <ListItemButton
-                selected={selectedChat?.type === 'group' && selectedChat?.id === id}
-                onClick={() => handleChatSelect('group', id)}
+                selected={selectedChat?.type === 'group' && selectedChat?.name === groupName}
+                onClick={() => handleChatSelect('group', groupName)}
               >
-                <GroupIcon sx={{ mr: 1 }} />
                 <ListItemText 
-                  primary={group.name}
+                  primary={groupName}
                   secondary={`${group.members.length} members`}
                 />
               </ListItemButton>
