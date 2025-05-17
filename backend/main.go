@@ -23,6 +23,7 @@ const (
 	TypeAddGroupMember    = "add_group_member"
 	TypeRemoveGroupMember = "remove_group_member"
 	TypeLeaveGroup        = "leave_group"
+	TypeRequestHistory    = "request_history" // New type for requesting message history
 
 	// Backend Storage
 	TypePrivate = "private"
@@ -32,6 +33,7 @@ const (
 	TypeUserList  = "user_list"
 	TypeGroupList = "group_list"
 	TypeSystem    = "system"
+	TypeHistory   = "history" // New type for sending message history
 )
 
 // Message keys
@@ -96,8 +98,11 @@ var (
 	clientsMux sync.RWMutex
 	groups     = make(map[string]*Group)
 	groupsMux  sync.RWMutex
-	messages   = make(map[string][]Message)
-	msgMux     sync.RWMutex
+
+	// Message storage
+	privateMessages = make(map[string][]Message) // key: "user1:user2"
+	groupMessages   = make(map[string][]Message) // key: "group_name"
+	msgMux          sync.RWMutex
 )
 
 // getConversationKey returns a consistent key for a conversation between two users
@@ -108,23 +113,23 @@ func getConversationKey(user1, user2 string) string {
 	return user2 + ":" + user1
 }
 
-// storeMessage stores a message in the message history
+// storeMessage stores a message in the appropriate message history
 func storeMessage(msg Message) {
 	msgMux.Lock()
 	defer msgMux.Unlock()
 
 	if msg.Type == TypePrivateMessage {
 		key := getConversationKey(msg.From, msg.To)
-		messages[key] = append(messages[key], msg)
-		log.Printf("Stored private message: from=%s, to=%s, key=%s, total_messages=%d, message=%+v",
-			msg.From, msg.To, key, len(messages[key]), msg)
+		privateMessages[key] = append(privateMessages[key], msg)
+		log.Printf("Stored private message: from=%s, to=%s, key=%s, total_messages=%d",
+			msg.From, msg.To, key, len(privateMessages[key]))
 	}
 
 	if msg.Type == TypeGroupMessage {
-		key := "group_" + msg.To
-		messages[key] = append(messages[key], msg)
-		log.Printf("Stored group message: group=%s, key=%s, total_messages=%d, message=%+v",
-			msg.To, key, len(messages[key]), msg)
+		key := msg.To // Use group name as key
+		groupMessages[key] = append(groupMessages[key], msg)
+		log.Printf("Stored group message: group=%s, key=%s, total_messages=%d",
+			msg.To, key, len(groupMessages[key]))
 	}
 }
 
@@ -132,7 +137,7 @@ func storeMessage(msg Message) {
 func getConversationHistory(user1, user2 string) []Message {
 	key := getConversationKey(user1, user2)
 	msgMux.RLock()
-	store, exists := messages[key]
+	store, exists := privateMessages[key]
 	msgMux.RUnlock()
 
 	if !exists {
@@ -140,31 +145,31 @@ func getConversationHistory(user1, user2 string) []Message {
 		return []Message{}
 	}
 
-	log.Printf("Retrieved %d messages for conversation %s between %s and %s: %+v",
-		len(store), key, user1, user2, store)
+	log.Printf("Retrieved %d messages for conversation %s between %s and %s",
+		len(store), key, user1, user2)
 	return store
 }
 
 // getGroupHistory returns the message history for a group
 func getGroupHistory(groupID string) []Message {
-	key := "group_" + groupID
 	msgMux.RLock()
-	store, exists := messages[key]
+	store, exists := groupMessages[groupID]
 	msgMux.RUnlock()
 
 	if !exists {
-		log.Printf("No message history found for group %s", key)
+		log.Printf("No message history found for group %s", groupID)
 		return []Message{}
 	}
 
-	log.Printf("Retrieved %d messages for group %s", len(store), key)
+	log.Printf("Retrieved %d messages for group %s", len(store), groupID)
 	return store
 }
 
 func main() {
 	// Clear messages when server starts
 	msgMux.Lock()
-	messages = make(map[string][]Message)
+	privateMessages = make(map[string][]Message)
+	groupMessages = make(map[string][]Message)
 	msgMux.Unlock()
 
 	// Get the embedded filesystem
@@ -296,17 +301,23 @@ func (c *Client) readPump() {
 		msg.From = c.Username
 		msg.Timestamp = time.Now().Format(time.RFC3339)
 
-		// Store message
-		storeMessage(msg)
-
 		// Handle different message types
 		switch msg.Type {
 		case TypePrivateMessage:
+			// Store message
+			storeMessage(msg)
+			// Send to recipient
 			msgBytes, _ := json.Marshal(msg)
 			sendToUser(msg.To, msgBytes)
 		case TypeGroupMessage:
+			// Store message
+			storeMessage(msg)
+			// Send to group members
 			msgBytes, _ := json.Marshal(msg)
 			sendToGroup(msg.To, msgBytes)
+		case TypeRequestHistory:
+			// Send message history
+			sendMessageHistory(c, msg.To, msg.Content)
 		case TypeCreateGroup:
 			createGroup(msg)
 		case TypeAddGroupMember:
@@ -691,4 +702,34 @@ func leaveGroup(msg Message) {
 
 	// Update group list
 	sendGroupList()
+}
+
+// sendMessageHistory sends the message history to a client
+func sendMessageHistory(client *Client, chatType, chatID string) {
+	var history []Message
+
+	if chatType == "private" {
+		history = getConversationHistory(client.Username, chatID)
+	} else if chatType == "group" {
+		history = getGroupHistory(chatID)
+	}
+
+	message := map[string]interface{}{
+		KeyType:      TypeHistory,
+		KeyContent:   history,
+		KeyTimestamp: time.Now().Format(time.RFC3339),
+	}
+
+	messageBytes, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling history for client %s: %v", client.Username, err)
+		return
+	}
+
+	select {
+	case client.send <- messageBytes:
+		log.Printf("Message history sent to client: %s", client.Username)
+	default:
+		log.Printf("Failed to send message history to client: %s", client.Username)
+	}
 }
