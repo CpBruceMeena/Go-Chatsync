@@ -67,64 +67,41 @@ export const WebSocketProvider = ({ children }) => {
     }
   }, [username, connect]);
 
-  const handleMessage = (data) => {
-    console.log('WebSocketContext: Received message:', {
-      type: data.type,
-      from: data.from,
-      to: data.to,
-      content: data.content,
-      timestamp: data.timestamp,
-      raw: data,
-      selectedChat,
-      username
-    });
-    switch (data.type) {
-      case 'user_list': {
-        console.log('WebSocketContext: Updating user list:', data.users);
-        const userList = Object.keys(data.users || {});
-        console.log('WebSocketContext: Processed user list:', userList);
-        setUsers(userList);
+  const handleMessage = useCallback((message) => {
+    console.log('WebSocketContext: Received message:', message);
+    switch (message.type) {
+      case 'user_list':
+        setUsers(Object.keys(message.users));
+        break;
+      case 'group_list': {
+        // Convert array of groups to object with group ID as key
+        const groupsMap = message.groups.reduce((acc, group) => {
+          acc[group.name] = group;
+          return acc;
+        }, {});
+        console.log('WebSocketContext: Updating groups:', groupsMap);
+        setGroups(groupsMap);
         break;
       }
-      case 'group_list':
-        console.log('WebSocketContext: Updating group list:', data.groups);
-        setGroups(data.groups || {});
-        break;
       case 'private_message':
       case 'group_message':
-      case 'system':
-        console.log('WebSocketContext: Processing new message:', {
-          type: data.type,
-          from: data.from,
-          to: data.to,
-          content: data.content,
-          timestamp: data.timestamp,
-          selectedChat,
-          username,
-          isRelevant: selectedChat && (
-            (data.type === 'private_message' && 
-             ((data.from === username && data.to === selectedChat.id) ||
-              (data.from === selectedChat.id && data.to === username))) ||
-            (data.type === 'group_message' && data.to === selectedChat.id)
-          )
-        });
         setMessages(prev => {
-          const newMessages = [...prev, data];
-          console.log('WebSocketContext: Updated messages state:', {
+          const newMessages = [...prev, message];
+          console.log('WebSocketContext: Added received message to state:', {
+            message,
             previousCount: prev.length,
-            newCount: newMessages.length,
-            newMessage: data,
-            selectedChat,
-            username,
-            allMessages: newMessages
+            newCount: newMessages.length
           });
           return newMessages;
         });
         break;
+      case 'system':
+        console.log('System message:', message.content);
+        break;
       default:
-        console.log('WebSocketContext: Unknown message type:', data.type);
+        console.log('Unknown message type:', message.type);
     }
-  };
+  }, [setUsers, setGroups, setMessages]);
 
   const sendMessage = useCallback((message) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -201,7 +178,7 @@ export const WebSocketProvider = ({ children }) => {
         socket.close();
       }
     };
-  }, [socket]);
+  }, [socket, handleMessage]);
 
   const value = {
     isConnected,

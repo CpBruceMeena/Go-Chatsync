@@ -432,23 +432,11 @@ func sendToGroup(groupName string, message []byte) {
 func sendGroupList() {
 	log.Printf("Starting sendGroupList()")
 	groupsMux.RLock()
-	groupList := make([]Group, 0, len(groups))
-	for _, group := range groups {
-		groupList = append(groupList, *group)
+	groupsCopy := make(map[string]*Group, len(groups))
+	for id, group := range groups {
+		groupsCopy[id] = group
 	}
 	groupsMux.RUnlock()
-
-	message := map[string]interface{}{
-		KeyType:      TypeGroupList,
-		KeyGroups:    groupList,
-		KeyTimestamp: time.Now().Format(time.RFC3339),
-	}
-
-	messageBytes, err := json.Marshal(message)
-	if err != nil {
-		log.Printf("Error marshaling group list: %v", err)
-		return
-	}
 
 	// Get a copy of clients to minimize lock time
 	clientsMux.RLock()
@@ -458,8 +446,28 @@ func sendGroupList() {
 	}
 	clientsMux.RUnlock()
 
-	log.Printf("Broadcasting group list to %d clients", len(clientsCopy))
+	// Send filtered group list to each user
 	for username, client := range clientsCopy {
+		// Filter groups for this user
+		userGroups := make([]Group, 0)
+		for _, group := range groupsCopy {
+			if contains(group.Members, username) {
+				userGroups = append(userGroups, *group)
+			}
+		}
+
+		message := map[string]interface{}{
+			KeyType:      TypeGroupList,
+			KeyGroups:    userGroups,
+			KeyTimestamp: time.Now().Format(time.RFC3339),
+		}
+
+		messageBytes, err := json.Marshal(message)
+		if err != nil {
+			log.Printf("Error marshaling group list for user %s: %v", username, err)
+			continue
+		}
+
 		select {
 		case client.send <- messageBytes:
 			log.Printf("Group list sent to client: %s", username)
@@ -473,6 +481,16 @@ func sendGroupList() {
 		}
 	}
 	log.Printf("Finished sending group list")
+}
+
+// Helper function to check if a slice contains a string
+func contains(slice []string, str string) bool {
+	for _, v := range slice {
+		if v == str {
+			return true
+		}
+	}
+	return false
 }
 
 func broadcastMessage(message []byte) {

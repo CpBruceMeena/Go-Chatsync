@@ -221,14 +221,19 @@ const Chat = () => {
           <Typography variant="h6">Groups</Typography>
         </Box>
         <List sx={{ flex: 1, overflow: 'auto' }}>
-          {Object.entries(groups).map(([id, group]) => (
+          {Object.entries(groups)
+            .filter(([_, group]) => group.members.includes(username))
+            .map(([id, group]) => (
             <ListItem key={id} disablePadding>
               <ListItemButton
                 selected={selectedChat?.type === 'group' && selectedChat?.id === id}
                 onClick={() => setSelectedChat({ type: 'group', id, name: group.name })}
               >
                 <GroupIcon sx={{ mr: 1 }} />
-                <ListItemText primary={group.name} />
+                <ListItemText 
+                  primary={group.name}
+                  secondary={`${group.members.length} members`}
+                />
               </ListItemButton>
             </ListItem>
           ))}
