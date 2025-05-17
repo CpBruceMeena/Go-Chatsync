@@ -3,65 +3,101 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/CpBruceMeena/Go-Chatsync/static"
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all connections in development
-	},
-}
+// Message types
+const (
+	// Frontend to Backend
+	TypePrivateMessage    = "private_message"
+	TypeGroupMessage      = "group_message"
+	TypeCreateGroup       = "create_group"
+	TypeAddGroupMember    = "add_group_member"
+	TypeRemoveGroupMember = "remove_group_member"
+	TypeLeaveGroup        = "leave_group"
 
-// Message represents the structure of our chat messages
-type Message struct {
-	Type      string   `json:"type"`       // message types: private_message, group_message, system
-	From      string   `json:"from"`       // sender's username
-	To        string   `json:"to"`         // recipient's username
-	Content   string   `json:"content"`    // message content
-	Timestamp string   `json:"timestamp"`  // message timestamp
-	GroupID   string   `json:"group_id"`   // group identifier
-	GroupName string   `json:"group_name"` // group name for creation
-	Member    string   `json:"member"`     // member username for group operations
-	Members   []string `json:"members"`    // multiple members for group operations
-}
+	// Backend Storage
+	TypePrivate = "private"
+	TypeGroup   = "group"
 
-// MessageStore represents a conversation between two users or a group
-type MessageStore struct {
-	Messages []Message
-	mu       sync.RWMutex
-}
+	// Backend to Frontend
+	TypeUserList  = "user_list"
+	TypeGroupList = "group_list"
+	TypeSystem    = "system"
+)
 
+// Message keys
+const (
+	KeyType      = "type"
+	KeyFrom      = "from"
+	KeyTo        = "to"
+	KeyContent   = "content"
+	KeyTimestamp = "timestamp"
+	KeyUsers     = "users"
+	KeyGroups    = "groups"
+)
+
+// Group keys
+const (
+	KeyName    = "name"
+	KeyAdmin   = "admin"
+	KeyMembers = "members"
+)
+
+var (
+	upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return true // Allow all origins for development
+		},
+	}
+
+	// WebSocket configuration
+	maxMessageSize int64 = 512 * 1024 // 512KB
+	pongWait             = 60 * time.Second
+	writeWait            = 10 * time.Second
+)
+
+// Client represents a connected WebSocket client
 type Client struct {
+	Username string
 	conn     *websocket.Conn
 	send     chan []byte
-	ID       string
-	Username string
-	LastSeen time.Time
-	Groups   map[string]bool
 }
 
+// Message represents a chat message
+type Message struct {
+	Type      string `json:"type"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+}
+
+// Group represents a chat group
 type Group struct {
-	ID      string
-	Name    string
-	Members map[string]*Client
-	Admin   string
+	Name    string   `json:"name"`
+	Admin   string   `json:"admin"`   // Group admin
+	Members []string `json:"members"` // List of member usernames
 }
 
 var (
-	// Store clients by username instead of ID
-	clients         = make(map[string]*Client)
-	groups          = make(map[string]*Group)
-	messageStore    = make(map[string]*MessageStore)
-	clientsMux      sync.Mutex
-	messageStoreMux sync.RWMutex
+	// Global variables
+	clients    = make(map[string]*Client)
+	clientsMux sync.RWMutex
+	groups     = make(map[string]*Group)
+	groupsMux  sync.RWMutex
+	messages   = make(map[string][]Message)
+	msgMux     sync.RWMutex
 )
 
 // getConversationKey returns a consistent key for a conversation between two users
@@ -74,267 +110,213 @@ func getConversationKey(user1, user2 string) string {
 
 // storeMessage stores a message in the message history
 func storeMessage(msg Message) {
-	if msg.Type != "private_message" && msg.Type != "group_message" {
-		return
+	msgMux.Lock()
+	defer msgMux.Unlock()
+
+	if msg.Type == TypePrivateMessage {
+		key := getConversationKey(msg.From, msg.To)
+		messages[key] = append(messages[key], msg)
+		log.Printf("Stored private message: from=%s, to=%s, key=%s, total_messages=%d, message=%+v",
+			msg.From, msg.To, key, len(messages[key]), msg)
 	}
 
-	if msg.Type == "private_message" {
-		key := getConversationKey(msg.From, msg.To)
-		messageStoreMux.Lock()
-		if _, exists := messageStore[key]; !exists {
-			messageStore[key] = &MessageStore{
-				Messages: make([]Message, 0),
-			}
-		}
-		messageStore[key].mu.Lock()
-		messageStore[key].Messages = append(messageStore[key].Messages, msg)
-		messageStore[key].mu.Unlock()
-		messageStoreMux.Unlock()
-		log.Printf("Stored private message in conversation %s: %+v", key, msg)
-	} else if msg.Type == "group_message" {
-		key := "group:" + msg.GroupID
-		messageStoreMux.Lock()
-		if _, exists := messageStore[key]; !exists {
-			messageStore[key] = &MessageStore{
-				Messages: make([]Message, 0),
-			}
-		}
-		messageStore[key].mu.Lock()
-		messageStore[key].Messages = append(messageStore[key].Messages, msg)
-		messageStore[key].mu.Unlock()
-		messageStoreMux.Unlock()
-		log.Printf("Stored group message in group %s: %+v", key, msg)
+	if msg.Type == TypeGroupMessage {
+		key := "group_" + msg.To
+		messages[key] = append(messages[key], msg)
+		log.Printf("Stored group message: group=%s, key=%s, total_messages=%d, message=%+v",
+			msg.To, key, len(messages[key]), msg)
 	}
 }
 
 // getConversationHistory returns the message history for a conversation
 func getConversationHistory(user1, user2 string) []Message {
 	key := getConversationKey(user1, user2)
-	messageStoreMux.RLock()
-	store, exists := messageStore[key]
-	messageStoreMux.RUnlock()
+	msgMux.RLock()
+	store, exists := messages[key]
+	msgMux.RUnlock()
 
 	if !exists {
-		log.Printf("No message history found for conversation %s", key)
+		log.Printf("No message history found for conversation %s between %s and %s", key, user1, user2)
 		return []Message{}
 	}
 
-	store.mu.RLock()
-	messages := make([]Message, len(store.Messages))
-	copy(messages, store.Messages)
-	store.mu.RUnlock()
-
-	log.Printf("Retrieved %d messages for conversation %s", len(messages), key)
-	return messages
+	log.Printf("Retrieved %d messages for conversation %s between %s and %s: %+v",
+		len(store), key, user1, user2, store)
+	return store
 }
 
 // getGroupHistory returns the message history for a group
 func getGroupHistory(groupID string) []Message {
-	key := "group:" + groupID
-	messageStoreMux.RLock()
-	store, exists := messageStore[key]
-	messageStoreMux.RUnlock()
+	key := "group_" + groupID
+	msgMux.RLock()
+	store, exists := messages[key]
+	msgMux.RUnlock()
 
 	if !exists {
 		log.Printf("No message history found for group %s", key)
 		return []Message{}
 	}
 
-	store.mu.RLock()
-	messages := make([]Message, len(store.Messages))
-	copy(messages, store.Messages)
-	store.mu.RUnlock()
-
-	log.Printf("Retrieved %d messages for group %s", len(messages), key)
-	return messages
+	log.Printf("Retrieved %d messages for group %s", len(store), key)
+	return store
 }
 
 func main() {
-	http.HandleFunc("/", serveHome)
-	http.HandleFunc("/ws", handleWebSocket)
+	// Clear messages when server starts
+	msgMux.Lock()
+	messages = make(map[string][]Message)
+	msgMux.Unlock()
 
-	fmt.Println("Server starting on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal("ListenAndServe: ", err)
-	}
-}
-
-func serveHome(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "static/index.html")
-}
-
-func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	username := r.URL.Query().Get("username")
-	if username == "" {
-		http.Error(w, "Username is required", http.StatusBadRequest)
-		return
-	}
-
-	conn, err := upgrader.Upgrade(w, r, nil)
+	// Get the embedded filesystem
+	buildFS, err := static.GetBuildFS()
 	if err != nil {
-		log.Printf("Error upgrading connection: %v", err)
-		return
+		log.Fatal("Failed to get build filesystem:", err)
 	}
 
-	client := &Client{
-		conn:     conn,
-		send:     make(chan []byte, 256),
-		ID:       uuid.New().String(),
-		Username: username,
-		LastSeen: time.Now(),
-		Groups:   make(map[string]bool),
+	// Create a file server for the React app
+	fileServer := http.FileServer(http.FS(buildFS))
+
+	// Create a new mux
+	mux := http.NewServeMux()
+
+	// Handle WebSocket connections
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		username := r.URL.Query().Get("username")
+		if username == "" {
+			http.Error(w, "Username is required", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("New WebSocket connection request from user: %s", username)
+
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("Error upgrading connection for user %s: %v", username, err)
+			return
+		}
+
+		log.Printf("WebSocket connection established for user: %s", username)
+
+		client := &Client{
+			Username: username,
+			conn:     conn,
+			send:     make(chan []byte, 256),
+		}
+
+		clientsMux.Lock()
+		if existingClient, exists := clients[username]; exists {
+			log.Printf("Closing existing connection for user %s", username)
+			close(existingClient.send)
+		}
+		clients[username] = client
+		clientsMux.Unlock()
+
+		log.Printf("Registering new client for user: %s", username)
+
+		// Send initial user list and group list
+		log.Printf("Sending initial data to user: %s", username)
+		sendUserList()
+		sendGroupList()
+
+		// Broadcast system message about new user
+		broadcastSystemMessage(fmt.Sprintf("%s joined the chat", username))
+
+		go client.writePump()
+		go client.readPump()
+	})
+
+	// Serve static files for the React app
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// If the request is for an API endpoint, return 404
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		// If the request is for a file that exists in the build directory, serve it
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+
+		// Try to serve the requested file
+		if _, err := buildFS.Open(path); err == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// For all other requests, serve index.html (React router will handle the routing)
+		indexFile, err := buildFS.Open("index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer indexFile.Close()
+
+		http.ServeContent(w, r, "index.html", time.Now(), indexFile.(io.ReadSeeker))
+	})
+
+	// Start the server
+	log.Println("Server starting on :8080")
+	if err := http.ListenAndServe(":8080", mux); err != nil {
+		log.Fatal("Error starting server:", err)
 	}
-
-	clientsMux.Lock()
-	// Check if username already exists
-	if existingClient, exists := clients[username]; exists {
-		// Close existing connection
-		existingClient.conn.Close()
-		log.Printf("Closed existing connection for user %s", username)
-	}
-	clients[username] = client
-	clientsMux.Unlock()
-
-	// Send client ID to the client
-	clientIdMessage := map[string]interface{}{
-		"type":      "client_id",
-		"client_id": client.ID,
-	}
-	clientIdBytes, _ := json.Marshal(clientIdMessage)
-	client.send <- clientIdBytes
-
-	// Send initial user list and group list
-	sendUserList()
-	sendGroupList()
-
-	// Broadcast user joined message
-	broadcastSystemMessage(fmt.Sprintf("%s joined the chat", username))
-
-	go client.writePump()
-	go client.readPump()
 }
 
 func (c *Client) readPump() {
 	defer func() {
-		c.conn.Close()
 		clientsMux.Lock()
 		delete(clients, c.Username)
 		clientsMux.Unlock()
-		broadcastSystemMessage(fmt.Sprintf("%s left the chat", c.Username))
-		sendUserList()
+		c.conn.Close()
 	}()
+
+	c.conn.SetReadLimit(maxMessageSize)
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
 
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("Error reading message from client %s: %v", c.Username, err)
 			}
 			break
 		}
 
 		var msg Message
 		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("Error unmarshaling message: %v", err)
+			log.Printf("Error unmarshaling message from client %s: %v", c.Username, err)
 			continue
 		}
 
-		// Set the sender's username
 		msg.From = c.Username
 		msg.Timestamp = time.Now().Format(time.RFC3339)
 
-		log.Printf("Received message: %+v", msg)
+		// Store message
+		storeMessage(msg)
 
+		// Handle different message types
 		switch msg.Type {
-		case "private_message":
-			if msg.To != "" {
-				// Verify the recipient exists
-				clientsMux.Lock()
-				_, exists := clients[msg.To]
-				clientsMux.Unlock()
-
-				if !exists {
-					// Send error message to sender
-					errorMsg := Message{
-						Type:      "system",
-						Content:   fmt.Sprintf("User %s is not online", msg.To),
-						Timestamp: time.Now().Format(time.RFC3339),
-					}
-					sendToUser(errorMsg)
-					continue
-				}
-
-				// Store the message
-				storeMessage(msg)
-
-				// Send to recipient
-				sendToUser(msg)
-
-				// Send confirmation to sender
-				confirmation := Message{
-					Type:      "system",
-					Content:   "Message sent",
-					Timestamp: time.Now().Format(time.RFC3339),
-				}
-				sendToUser(confirmation)
-			}
-		case "get_history":
-			// Handle history request
-			if msg.To != "" {
-				history := getConversationHistory(c.Username, msg.To)
-				historyBytes, _ := json.Marshal(map[string]interface{}{
-					"type":    "history",
-					"from":    c.Username,
-					"to":      msg.To,
-					"history": history,
-				})
-				log.Printf("Sending private history response: %+v", history)
-				c.send <- historyBytes
-			}
-		case "get_group_history":
-			// Handle group history request
-			if msg.GroupID != "" {
-				history := getGroupHistory(msg.GroupID)
-				historyBytes, _ := json.Marshal(map[string]interface{}{
-					"type":     "group_history",
-					"group_id": msg.GroupID,
-					"history":  history,
-				})
-				log.Printf("Sending group history response: %+v", history)
-				c.send <- historyBytes
-			}
-		case "group_message":
-			if msg.GroupID != "" {
-				// Verify the group exists
-				clientsMux.Lock()
-				_, exists := groups[msg.GroupID]
-				clientsMux.Unlock()
-
-				if !exists {
-					// Send error message to sender
-					errorMsg := Message{
-						Type:      "system",
-						Content:   fmt.Sprintf("Group %s does not exist", msg.GroupID),
-						Timestamp: time.Now().Format(time.RFC3339),
-					}
-					sendToUser(errorMsg)
-					continue
-				}
-
-				// Store the message
-				storeMessage(msg)
-
-				// Send to group
-				sendToGroup(msg)
-			}
-		case "group_create":
+		case TypePrivateMessage:
+			msgBytes, _ := json.Marshal(msg)
+			sendToUser(msg.To, msgBytes)
+		case TypeGroupMessage:
+			msgBytes, _ := json.Marshal(msg)
+			sendToGroup(msg.To, msgBytes)
+		case TypeCreateGroup:
 			createGroup(msg)
-		case "add_group_member":
+		case TypeAddGroupMember:
 			addGroupMember(msg)
-		case "remove_group_member":
+		case TypeRemoveGroupMember:
 			removeGroupMember(msg)
+		case TypeLeaveGroup:
+			leaveGroup(msg)
 		default:
-			log.Printf("Unknown message type: %s", msg.Type)
+			log.Printf("Unknown message type from client %s: %s", c.Username, msg.Type)
 		}
 	}
 }
@@ -360,157 +342,162 @@ func (c *Client) writePump() {
 }
 
 func sendUserList() {
-	clientsMux.Lock()
+	log.Printf("Starting sendUserList()")
+	clientsMux.RLock()
 	userList := make(map[string]string)
 	for username := range clients {
 		userList[username] = username
 	}
-	clientsMux.Unlock()
+	clientsMux.RUnlock()
 
-	messageBytes, _ := json.Marshal(map[string]interface{}{
-		"type":  "user_list",
-		"users": userList,
-	})
-
-	log.Printf("Broadcasting user list: %+v", userList)
-	broadcastMessage(messageBytes)
-}
-
-func sendToUser(message Message) {
-	clientsMux.Lock()
-	defer clientsMux.Unlock()
+	message := map[string]interface{}{
+		KeyType:      TypeUserList,
+		KeyUsers:     userList,
+		KeyTimestamp: time.Now().Format(time.RFC3339),
+	}
 
 	messageBytes, err := json.Marshal(message)
 	if err != nil {
-		log.Printf("Error marshaling message: %v", err)
+		log.Printf("Error marshaling user list: %v", err)
 		return
 	}
 
-	// Find recipient by username
-	var recipientFound bool
-	if recipient, exists := clients[message.To]; exists {
+	// Get a copy of clients to minimize lock time
+	clientsMux.RLock()
+	clientsCopy := make(map[string]*Client, len(clients))
+	for username, client := range clients {
+		clientsCopy[username] = client
+	}
+	clientsMux.RUnlock()
+
+	log.Printf("Broadcasting user list to %d clients: %v", len(clientsCopy), userList)
+	for username, client := range clientsCopy {
 		select {
-		case recipient.send <- messageBytes:
-			recipientFound = true
-			log.Printf("Message sent to %s: %s", recipient.Username, message.Content)
+		case client.send <- messageBytes:
+			log.Printf("User list sent to client: %s", username)
 		default:
-			log.Printf("Failed to send message to %s: channel full or closed", recipient.Username)
+			log.Printf("Failed to send user list to client: %s", username)
+			// Remove client
+			clientsMux.Lock()
+			delete(clients, username)
+			clientsMux.Unlock()
+			close(client.send)
 		}
 	}
+	log.Printf("Finished sending user list")
+}
 
-	// Send to sender (for confirmation)
-	if sender, exists := clients[message.From]; exists {
-		select {
-		case sender.send <- messageBytes:
-			log.Printf("Message confirmation sent to sender %s: %s", sender.Username, message.Content)
-		default:
-			log.Printf("Failed to send confirmation to sender %s: channel full or closed", sender.Username)
-		}
+func sendToUser(username string, message []byte) {
+	clientsMux.RLock()
+	client, exists := clients[username]
+	clientsMux.RUnlock()
+
+	if !exists {
+		log.Printf("User %s not found", username)
+		return
 	}
 
-	if !recipientFound {
-		log.Printf("Recipient %s not found for message from %s", message.To, message.From)
+	select {
+	case client.send <- message:
+		log.Printf("Message sent to user %s", username)
+	default:
+		log.Printf("Failed to send message to user %s", username)
+		// Remove client
+		clientsMux.Lock()
+		delete(clients, username)
+		clientsMux.Unlock()
+		close(client.send)
 	}
 }
 
-func sendToGroup(message Message) {
-	messageBytes, err := json.Marshal(message)
-	if err != nil {
-		log.Printf("Error marshaling message: %v", err)
+func sendToGroup(groupName string, message []byte) {
+	groupsMux.RLock()
+	group, exists := groups[groupName]
+	groupsMux.RUnlock()
+
+	if !exists {
+		log.Printf("Group %s not found", groupName)
 		return
 	}
 
-	if group, exists := groups[message.GroupID]; exists {
-		// Send to all group members
-		for _, member := range group.Members {
-			select {
-			case member.send <- messageBytes:
-				// Message sent successfully
-			default:
-				// Channel is full or closed, remove the client
-				delete(group.Members, member.Username)
-				delete(member.Groups, message.GroupID)
-			}
-		}
+	// Get a copy of members to avoid holding the lock while sending
+	members := make([]string, len(group.Members))
+	copy(members, group.Members)
 
-		// If group is empty after sending, delete it
-		if len(group.Members) == 0 {
-			delete(groups, message.GroupID)
-			sendGroupList()
-		}
+	for _, member := range members {
+		sendToUser(member, message)
 	}
 }
 
 func sendGroupList() {
-	log.Printf("Sending group list to all clients")
-	clientsMux.Lock()
-	defer clientsMux.Unlock()
-
-	// Create a map to store groups for each user
-	userGroups := make(map[string]map[string]interface{})
-
-	// First, collect all groups for each user
+	log.Printf("Starting sendGroupList()")
+	groupsMux.RLock()
+	groupList := make([]Group, 0, len(groups))
 	for _, group := range groups {
-		// Add group to admin's list
-		if _, exists := userGroups[group.Admin]; !exists {
-			userGroups[group.Admin] = make(map[string]interface{})
-		}
-		userGroups[group.Admin][group.ID] = map[string]interface{}{
-			"name":    group.Name,
-			"admin":   group.Admin,
-			"members": getGroupMemberUsernames(group),
-		}
+		groupList = append(groupList, *group)
+	}
+	groupsMux.RUnlock()
 
-		// Add group to each member's list
-		for username := range group.Members {
-			if username != group.Admin { // Skip admin as we already added them
-				if _, exists := userGroups[username]; !exists {
-					userGroups[username] = make(map[string]interface{})
-				}
-				userGroups[username][group.ID] = map[string]interface{}{
-					"name":    group.Name,
-					"admin":   group.Admin,
-					"members": getGroupMemberUsernames(group),
-				}
-			}
-		}
+	message := map[string]interface{}{
+		KeyType:      TypeGroupList,
+		KeyGroups:    groupList,
+		KeyTimestamp: time.Now().Format(time.RFC3339),
 	}
 
-	// Send personalized group list to each user
+	messageBytes, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling group list: %v", err)
+		return
+	}
+
+	// Get a copy of clients to minimize lock time
+	clientsMux.RLock()
+	clientsCopy := make(map[string]*Client, len(clients))
 	for username, client := range clients {
-		if groups, exists := userGroups[username]; exists {
-			message := map[string]interface{}{
-				"type":   "group_list",
-				"groups": groups,
-			}
-			messageBytes, _ := json.Marshal(message)
-			client.send <- messageBytes
-			log.Printf("Sent group list to user %s with %d groups", username, len(groups))
-		} else {
-			// Send empty group list if user has no groups
-			message := map[string]interface{}{
-				"type":   "group_list",
-				"groups": make(map[string]interface{}),
-			}
-			messageBytes, _ := json.Marshal(message)
-			client.send <- messageBytes
-			log.Printf("Sent empty group list to user %s", username)
+		clientsCopy[username] = client
+	}
+	clientsMux.RUnlock()
+
+	log.Printf("Broadcasting group list to %d clients", len(clientsCopy))
+	for username, client := range clientsCopy {
+		select {
+		case client.send <- messageBytes:
+			log.Printf("Group list sent to client: %s", username)
+		default:
+			log.Printf("Failed to send group list to client: %s", username)
+			// Remove client
+			clientsMux.Lock()
+			delete(clients, username)
+			clientsMux.Unlock()
+			close(client.send)
 		}
 	}
+	log.Printf("Finished sending group list")
 }
 
 func broadcastMessage(message []byte) {
 	log.Printf("Starting broadcastMessage()")
-	clientsMux.Lock()
-	defer clientsMux.Unlock()
 
-	log.Printf("Broadcasting message to %d clients", len(clients))
+	// Get a copy of clients to minimize lock time
+	clientsMux.RLock()
+	clientsCopy := make(map[string]*Client, len(clients))
 	for username, client := range clients {
+		clientsCopy[username] = client
+	}
+	clientsMux.RUnlock()
+
+	log.Printf("Broadcasting message to %d clients", len(clientsCopy))
+	for username, client := range clientsCopy {
 		select {
 		case client.send <- message:
 			log.Printf("Message sent successfully to client %s", username)
 		default:
 			log.Printf("Failed to send message to client %s: channel full or closed", username)
+			// Remove client
+			clientsMux.Lock()
+			delete(clients, username)
+			clientsMux.Unlock()
+			close(client.send)
 		}
 	}
 	log.Printf("Finished broadcasting message")
@@ -518,7 +505,7 @@ func broadcastMessage(message []byte) {
 
 func broadcastSystemMessage(content string) {
 	message := Message{
-		Type:      "system",
+		Type:      TypeSystem,
 		Content:   content,
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
@@ -526,192 +513,164 @@ func broadcastSystemMessage(content string) {
 	broadcastMessage(messageBytes)
 }
 
-func createGroup(message Message) {
-	log.Printf("Creating group with message: %+v", message)
+// createGroup creates a new group
+func createGroup(msg Message) {
+	log.Printf("Creating group: %s by user: %s", msg.To, msg.From)
 
-	// Use group name as the group ID
-	groupID := message.GroupName
+	// Parse members from content
+	members := strings.Split(msg.Content, ",")
+	if len(members) == 0 {
+		log.Printf("No members provided for group creation")
+		return
+	}
+
+	// Create new group
 	group := &Group{
-		ID:      groupID,
-		Name:    message.GroupName,
-		Members: make(map[string]*Client),
-		Admin:   message.From,
+		Name:    msg.To,
+		Admin:   msg.From,
+		Members: append([]string{msg.From}, members...), // Add creator as first member
 	}
 
-	// Add creator as member
-	if creator, exists := clients[message.From]; exists {
-		log.Printf("Adding creator %s to group %s", creator.Username, groupID)
-		group.Members[creator.Username] = creator
-		creator.Groups[groupID] = true
+	// Store group
+	groupsMux.Lock()
+	groups[msg.To] = group
+	groupsMux.Unlock()
 
-		// Send confirmation to creator
-		messageBytes, _ := json.Marshal(map[string]interface{}{
-			"type":     "group_created",
-			"group_id": groupID,
-			"name":     group.Name,
-		})
-		creator.send <- messageBytes
-		log.Printf("Group creation confirmation sent to creator")
-	} else {
-		log.Printf("Creator %s not found in clients", message.From)
-		return
+	// Notify group members
+	notification := Message{
+		Type:      TypeSystem,
+		Content:   fmt.Sprintf("Group '%s' created by %s", msg.To, msg.From),
+		Timestamp: time.Now().Format(time.RFC3339),
 	}
-
-	// Add initial members if provided
-	if len(message.Members) > 0 {
-		for _, memberUsername := range message.Members {
-			if member, exists := clients[memberUsername]; exists {
-				// Add member to group
-				group.Members[memberUsername] = member
-				member.Groups[groupID] = true
-
-				// Notify the new member
-				notification := Message{
-					Type:      "system",
-					Content:   fmt.Sprintf("You have been added to group %s", group.Name),
-					Timestamp: time.Now().Format(time.RFC3339),
-					GroupID:   groupID,
-					GroupName: group.Name,
-				}
-				sendToUser(notification)
-			} else {
-				log.Printf("User %s not found", memberUsername)
-			}
-		}
-	}
-
-	groups[groupID] = group
-	log.Printf("Group %s created successfully with %d members", groupID, len(group.Members))
-
-	// Update group list for all clients
-	log.Printf("Calling sendGroupList() after group creation")
-	sendGroupList()
-
-	// Broadcast system message
-	if creator, exists := clients[message.From]; exists {
-		memberCount := len(group.Members)
-		if memberCount > 1 {
-			broadcastSystemMessage(fmt.Sprintf("Group '%s' created by %s with %d members", group.Name, creator.Username, memberCount))
-		} else {
-			broadcastSystemMessage(fmt.Sprintf("Group '%s' created by %s", group.Name, creator.Username))
-		}
-	}
-}
-
-func addGroupMember(message Message) {
-	clientsMux.Lock()
-	defer clientsMux.Unlock()
-
-	group, exists := groups[message.GroupID]
-	if !exists {
-		log.Printf("Group %s does not exist", message.GroupID)
-		return
-	}
-
-	// Check if the sender is the admin
-	if group.Admin != message.From {
-		log.Printf("User %s is not authorized to add members to group %s", message.From, message.GroupID)
-		return
-	}
-
-	// Handle multiple members if provided
-	if len(message.Members) > 0 {
-		for _, memberUsername := range message.Members {
-			if member, exists := clients[memberUsername]; exists {
-				// Add member to group
-				group.Members[memberUsername] = member
-				member.Groups[message.GroupID] = true
-
-				// Notify the new member
-				notification := Message{
-					Type:      "system",
-					Content:   fmt.Sprintf("You have been added to group %s", group.Name),
-					Timestamp: time.Now().Format(time.RFC3339),
-					GroupID:   message.GroupID,
-					GroupName: group.Name,
-				}
-				sendToUser(notification)
-
-				// Notify group members
-				groupNotification := Message{
-					Type:      "system",
-					Content:   fmt.Sprintf("%s has been added to the group", memberUsername),
-					Timestamp: time.Now().Format(time.RFC3339),
-					GroupID:   message.GroupID,
-					GroupName: group.Name,
-				}
-				sendToGroup(groupNotification)
-			} else {
-				log.Printf("User %s not found", memberUsername)
-			}
-		}
-	} else if message.Member != "" {
-		// Handle single member (backward compatibility)
-		if member, exists := clients[message.Member]; exists {
-			// Add member to group
-			group.Members[message.Member] = member
-			member.Groups[message.GroupID] = true
-
-			// Notify the new member
-			notification := Message{
-				Type:      "system",
-				Content:   fmt.Sprintf("You have been added to group %s", group.Name),
-				Timestamp: time.Now().Format(time.RFC3339),
-				GroupID:   message.GroupID,
-				GroupName: group.Name,
-			}
-			sendToUser(notification)
-
-			// Notify group members
-			groupNotification := Message{
-				Type:      "system",
-				Content:   fmt.Sprintf("%s has been added to the group", message.Member),
-				Timestamp: time.Now().Format(time.RFC3339),
-				GroupID:   message.GroupID,
-				GroupName: group.Name,
-			}
-			sendToGroup(groupNotification)
-		} else {
-			log.Printf("User %s not found", message.Member)
-		}
-	}
+	msgBytes, _ := json.Marshal(notification)
+	sendToGroup(msg.To, msgBytes)
 
 	// Update group list for all users
 	sendGroupList()
 }
 
-func removeGroupMember(message Message) {
-	if group, exists := groups[message.GroupID]; exists {
-		// Check if the sender is the group admin
-		if group.Admin != message.From {
-			log.Printf("User %s is not authorized to remove members from group %s", message.From, message.GroupID)
-			return
-		}
+// addGroupMember adds a member to a group
+func addGroupMember(msg Message) {
+	log.Printf("Adding member %s to group %s", msg.Content, msg.To)
 
-		// Find the client to remove
-		if member, exists := clients[message.Member]; exists {
-			// Remove member from group
-			delete(group.Members, member.Username)
-			delete(member.Groups, message.GroupID)
-
-			// Notify all group members
-			broadcastSystemMessage(fmt.Sprintf("%s removed %s from group '%s'", message.From, message.Member, group.Name))
-		}
-
-		// If group is empty after removal, delete it
-		if len(group.Members) == 0 {
-			delete(groups, message.GroupID)
-		}
-
-		// Update group list for all clients
-		sendGroupList()
+	groupsMux.Lock()
+	group, exists := groups[msg.To]
+	if !exists {
+		groupsMux.Unlock()
+		log.Printf("Group %s not found", msg.To)
+		return
 	}
+
+	// Check if user is admin
+	if group.Admin != msg.From {
+		groupsMux.Unlock()
+		log.Printf("User %s is not authorized to add members", msg.From)
+		return
+	}
+
+	// Add new member
+	group.Members = append(group.Members, msg.Content)
+	groupsMux.Unlock()
+
+	// Notify group members
+	notification := Message{
+		Type:      TypeSystem,
+		Content:   fmt.Sprintf("%s added %s to the group", msg.From, msg.Content),
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+	msgBytes, _ := json.Marshal(notification)
+	sendToGroup(msg.To, msgBytes)
+
+	// Update group list
+	sendGroupList()
 }
 
-func getGroupMemberUsernames(group *Group) []string {
-	members := make([]string, 0, len(group.Members))
-	for username := range group.Members {
-		members = append(members, username)
+// removeGroupMember removes a member from a group
+func removeGroupMember(msg Message) {
+	log.Printf("Removing member %s from group %s", msg.Content, msg.To)
+
+	groupsMux.Lock()
+	group, exists := groups[msg.To]
+	if !exists {
+		groupsMux.Unlock()
+		log.Printf("Group %s not found", msg.To)
+		return
 	}
-	return members
+
+	// Check if user is admin
+	if group.Admin != msg.From {
+		groupsMux.Unlock()
+		log.Printf("User %s is not authorized to remove members", msg.From)
+		return
+	}
+
+	// Remove member
+	newMembers := make([]string, 0, len(group.Members))
+	for _, member := range group.Members {
+		if member != msg.Content {
+			newMembers = append(newMembers, member)
+		}
+	}
+	group.Members = newMembers
+	groupsMux.Unlock()
+
+	// Notify group members
+	notification := Message{
+		Type:      TypeSystem,
+		Content:   fmt.Sprintf("%s removed %s from the group", msg.From, msg.Content),
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+	msgBytes, _ := json.Marshal(notification)
+	sendToGroup(msg.To, msgBytes)
+
+	// Update group list
+	sendGroupList()
+}
+
+// leaveGroup allows a user to leave a group
+func leaveGroup(msg Message) {
+	log.Printf("User %s leaving group %s", msg.From, msg.To)
+
+	groupsMux.Lock()
+	group, exists := groups[msg.To]
+	if !exists {
+		groupsMux.Unlock()
+		log.Printf("Group %s not found", msg.To)
+		return
+	}
+
+	// Remove member
+	newMembers := make([]string, 0, len(group.Members))
+	for _, member := range group.Members {
+		if member != msg.From {
+			newMembers = append(newMembers, member)
+		}
+	}
+	group.Members = newMembers
+
+	// If group is empty, delete it
+	if len(group.Members) == 0 {
+		delete(groups, msg.To)
+		groupsMux.Unlock()
+		log.Printf("Group %s deleted as it's empty", msg.To)
+	} else {
+		// If admin left, assign new admin
+		if group.Admin == msg.From {
+			group.Admin = group.Members[0]
+			log.Printf("New admin for group %s: %s", msg.To, group.Admin)
+		}
+		groupsMux.Unlock()
+	}
+
+	// Notify group members
+	notification := Message{
+		Type:      TypeSystem,
+		Content:   fmt.Sprintf("%s left the group", msg.From),
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+	msgBytes, _ := json.Marshal(notification)
+	sendToGroup(msg.To, msgBytes)
+
+	// Update group list
+	sendGroupList()
 }
