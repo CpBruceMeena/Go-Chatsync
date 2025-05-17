@@ -5,7 +5,6 @@ import {
   Paper,
   Typography,
   TextField,
-  Button,
   List,
   ListItem,
   ListItemText,
@@ -13,14 +12,9 @@ import {
   Divider,
   IconButton,
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip
+  Badge
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -42,7 +36,8 @@ const Chat = () => {
     createGroup,
     addGroupMember,
     removeGroupMember,
-    setMessages
+    setMessages,
+    ws
   } = useWebSocket();
 
   const [newMessage, setNewMessage] = useState('');
@@ -50,6 +45,8 @@ const Chat = () => {
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [unreadMessages, setUnreadMessages] = useState({});
+  const [lastSeenTimestamps, setLastSeenTimestamps] = useState({});
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
@@ -83,11 +80,62 @@ const Chat = () => {
     console.log('Current groups state:', groups);
   }, [groups]);
 
+  // Function to update last seen timestamp when chat is selected
+  const updateLastSeen = useCallback((chatId) => {
+    const currentTime = new Date().toISOString();
+    setLastSeenTimestamps(prev => ({
+      ...prev,
+      [chatId]: currentTime
+    }));
+  }, []);
+
+  // Update unread messages when receiving unread count message
+  useEffect(() => {
+    const handleUnreadCount = (event) => {
+      console.log('Chat: Received unread counts event:', event.detail);
+      setUnreadMessages(prev => {
+        const newCounts = { ...prev, ...event.detail };
+        console.log('Chat: Updated unread counts:', newCounts);
+        return newCounts;
+      });
+    };
+
+    console.log('Chat: Adding unread counts event listener');
+    window.addEventListener('unreadCounts', handleUnreadCount);
+
+    return () => {
+      console.log('Chat: Removing unread counts event listener');
+      window.removeEventListener('unreadCounts', handleUnreadCount);
+    };
+  }, []);
+
   const handleChatSelect = (type, id) => {
     console.log('Chat: Selecting chat:', { type, id });
     setSelectedChat({ type, id });
-    // Clear messages when switching chats - they will be loaded from history
-    setMessages([]);
+    
+    // Clear unread count for selected chat
+    setUnreadMessages(prev => {
+      const newCounts = { ...prev, [id]: 0 };
+      console.log('Chat: Cleared unread count for chat:', id, 'New counts:', newCounts);
+      return newCounts;
+    });
+
+    // Send last seen update to backend with current timestamp
+    const currentTime = new Date().toISOString();
+    const message = {
+      type: 'update_last_seen',
+      to: id,
+      content: currentTime,
+      timestamp: currentTime
+    };
+    console.log('Chat: Sending last seen update:', message);
+    sendMessage(message);
+
+    // Update local last seen timestamp
+    setLastSeenTimestamps(prev => ({
+      ...prev,
+      [id]: currentTime
+    }));
   };
 
   const handleSendMessage = (content) => {
@@ -217,7 +265,19 @@ const Chat = () => {
                     }
                   }}
                 >
-                  <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Badge
+                    badgeContent={unreadMessages[user] || 0}
+                    color="error"
+                    max={999999}
+                    sx={{
+                      '& .MuiBadge-badge': {
+                        right: -3,
+                        top: 3,
+                      }
+                    }}
+                  >
+                    <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  </Badge>
                   <ListItemText primary={user} />
                 </ListItemButton>
               </ListItem>
@@ -257,7 +317,19 @@ const Chat = () => {
                   }
                 }}
               >
-                <GroupIcon sx={{ mr: 1, color: 'primary.main' }} />
+                <Badge
+                  badgeContent={unreadMessages[groupName] || 0}
+                  color="error"
+                  max={999999}
+                  sx={{
+                    '& .MuiBadge-badge': {
+                      right: -3,
+                      top: 3,
+                    }
+                  }}
+                >
+                  <GroupIcon sx={{ mr: 1, color: 'primary.main' }} />
+                </Badge>
                 <ListItemText 
                   primary={groupName}
                   secondary={`${group.members.length} members`}

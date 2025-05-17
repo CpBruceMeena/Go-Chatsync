@@ -95,6 +95,18 @@ export const WebSocketProvider = ({ children }) => {
       case 'system':
         console.log('System message:', message.content);
         break;
+      case 'unread_count':
+        console.log('WebSocketContext: Received unread counts:', message.content);
+        try {
+          const counts = JSON.parse(message.content);
+          console.log('WebSocketContext: Parsed unread counts:', counts);
+          // Dispatch a custom event with the unread counts
+          const event = new CustomEvent('unreadCounts', { detail: counts });
+          window.dispatchEvent(event);
+        } catch (error) {
+          console.error('WebSocketContext: Error parsing unread counts:', error);
+        }
+        break;
       default:
         console.log('Unknown message type:', message.type);
     }
@@ -204,7 +216,8 @@ export const WebSocketProvider = ({ children }) => {
     sendMessage,
     createGroup,
     addGroupMember,
-    removeGroupMember
+    removeGroupMember,
+    ws: wsRef.current
   };
 
   return (

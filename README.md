@@ -14,6 +14,38 @@ A real-time chat application built with Go and React, featuring private messagin
 - Responsive design
 - Message history persistence
 - User presence tracking
+- Unread message counts
+- Last seen timestamps
+
+## Application Architecture
+
+### Single Port Serving
+The application is served entirely from a single port (8080) using Go's built-in HTTP server:
+
+1. **Backend Server (Go)**:
+   - Serves the React application's static files
+   - Handles WebSocket connections
+   - Manages all API endpoints
+   - Port: 8080
+
+2. **Frontend (React)**:
+   - Built into static files
+   - Served by the Go backend
+   - Communicates with backend via WebSocket
+   - No separate development server needed in production
+
+### Development vs Production
+- **Development**:
+  - Frontend runs on port 3000 (React dev server)
+  - Backend runs on port 8080
+  - WebSocket connections to backend
+  - Hot reloading enabled
+
+- **Production**:
+  - Single port (8080) serving everything
+  - Optimized static files
+  - No development overhead
+  - Simplified deployment
 
 ## WebSocket Implementation
 
@@ -163,6 +195,26 @@ The application uses WebSocket for real-time bidirectional communication between
 - Real-time updates
 - Message timestamps
 - User presence indicators
+
+## Recent Updates
+
+### Unread Message Counts
+- Real-time unread message tracking
+- Badge indicators for unread messages
+- Automatic count reset when opening chats
+- Persistence across sessions
+
+### Last Seen Timestamps
+- Tracks when users last viewed chats
+- Updates automatically when opening chats
+- Used for unread message calculations
+- Real-time synchronization
+
+### Message Handling Improvements
+- Optimized message state management
+- Better error handling
+- Improved WebSocket message flow
+- Enhanced real-time updates
 
 ## Contributing
 

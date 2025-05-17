@@ -23,17 +23,19 @@ const (
 	TypeAddGroupMember    = "add_group_member"
 	TypeRemoveGroupMember = "remove_group_member"
 	TypeLeaveGroup        = "leave_group"
-	TypeRequestHistory    = "request_history" // New type for requesting message history
+	TypeRequestHistory    = "request_history"
+	TypeUpdateLastSeen    = "update_last_seen" // New type for updating last seen timestamp
 
 	// Backend Storage
 	TypePrivate = "private"
 	TypeGroup   = "group"
 
 	// Backend to Frontend
-	TypeUserList  = "user_list"
-	TypeGroupList = "group_list"
-	TypeSystem    = "system"
-	TypeHistory   = "history" // New type for sending message history
+	TypeUserList    = "user_list"
+	TypeGroupList   = "group_list"
+	TypeSystem      = "system"
+	TypeHistory     = "history"
+	TypeUnreadCount = "unread_count" // New type for sending unread message counts
 )
 
 // Message keys
@@ -103,6 +105,10 @@ var (
 	privateMessages = make(map[string][]Message) // key: "user1:user2"
 	groupMessages   = make(map[string][]Message) // key: "group_name"
 	msgMux          sync.RWMutex
+
+	// Last seen tracking
+	lastSeenTimestamps = make(map[string]map[string]string) // key: username -> map[chatID]timestamp
+	lastSeenMux        sync.RWMutex
 )
 
 // getConversationKey returns a consistent key for a conversation between two users
@@ -301,7 +307,6 @@ func (c *Client) readPump() {
 		msg.From = c.Username
 		msg.Timestamp = time.Now().Format(time.RFC3339)
 
-		// Handle different message types
 		switch msg.Type {
 		case TypePrivateMessage:
 			// Store message
@@ -309,12 +314,29 @@ func (c *Client) readPump() {
 			// Send to recipient
 			msgBytes, _ := json.Marshal(msg)
 			sendToUser(msg.To, msgBytes)
+			// Send unread counts to recipient
+			sendUnreadCounts(msg.To)
 		case TypeGroupMessage:
 			// Store message
 			storeMessage(msg)
 			// Send to group members
 			msgBytes, _ := json.Marshal(msg)
 			sendToGroup(msg.To, msgBytes)
+			// Send unread counts to all group members
+			groupsMux.RLock()
+			if group, ok := groups[msg.To]; ok {
+				for _, member := range group.Members {
+					if member != msg.From {
+						sendUnreadCounts(member)
+					}
+				}
+			}
+			groupsMux.RUnlock()
+		case TypeUpdateLastSeen:
+			// Update last seen timestamp
+			updateLastSeen(c.Username, msg.To, msg.Timestamp)
+			// Send updated unread counts
+			sendUnreadCounts(c.Username)
 		case TypeRequestHistory:
 			// Send message history
 			sendMessageHistory(c, msg.To, msg.Content)
@@ -732,4 +754,184 @@ func sendMessageHistory(client *Client, chatType, chatID string) {
 	default:
 		log.Printf("Failed to send message history to client: %s", client.Username)
 	}
+}
+
+// updateLastSeen updates the last seen timestamp for a user's chat
+func updateLastSeen(username, chatID string, timestamp string) {
+	lastSeenMux.Lock()
+	defer lastSeenMux.Unlock()
+
+	if _, exists := lastSeenTimestamps[username]; !exists {
+		lastSeenTimestamps[username] = make(map[string]string)
+	}
+
+	// Use the provided timestamp if it's valid, otherwise use current time
+	if timestamp != "" {
+		// Validate the timestamp format
+		if _, err := time.Parse(time.RFC3339, timestamp); err == nil {
+			lastSeenTimestamps[username][chatID] = timestamp
+			log.Printf("Updated last seen for %s in chat %s to %s", username, chatID, timestamp)
+			return
+		}
+	}
+
+	// Fallback to current time if timestamp is invalid
+	currentTime := time.Now().Format(time.RFC3339)
+	lastSeenTimestamps[username][chatID] = currentTime
+	log.Printf("Updated last seen for %s in chat %s to current time %s", username, chatID, currentTime)
+}
+
+// getUnreadCount returns the number of unread messages for a user in a chat
+func getUnreadCount(username, chatID string) int {
+	lastSeenMux.RLock()
+	lastSeen, exists := lastSeenTimestamps[username][chatID]
+	lastSeenMux.RUnlock()
+
+	if !exists {
+		// If no last seen timestamp, count all messages
+		msgMux.RLock()
+		defer msgMux.RUnlock()
+
+		count := 0
+		// Check private messages
+		for key, messages := range privateMessages {
+			parts := strings.Split(key, ":")
+			if len(parts) != 2 {
+				continue
+			}
+
+			otherUser := parts[0]
+			if otherUser == username {
+				otherUser = parts[1]
+			}
+
+			if otherUser == chatID {
+				for _, msg := range messages {
+					if msg.From != username {
+						count++
+					}
+				}
+			}
+		}
+
+		// Check group messages
+		if messages, exists := groupMessages[chatID]; exists {
+			for _, msg := range messages {
+				if msg.From != username {
+					count++
+				}
+			}
+		}
+		return count
+	}
+
+	lastSeenTime, err := time.Parse(time.RFC3339, lastSeen)
+	if err != nil {
+		log.Printf("Error parsing last seen timestamp: %v", err)
+		return 0
+	}
+
+	msgMux.RLock()
+	defer msgMux.RUnlock()
+
+	count := 0
+
+	// Check private messages
+	for key, messages := range privateMessages {
+		parts := strings.Split(key, ":")
+		if len(parts) != 2 {
+			continue
+		}
+
+		otherUser := parts[0]
+		if otherUser == username {
+			otherUser = parts[1]
+		}
+
+		if otherUser == chatID {
+			for _, msg := range messages {
+				if msg.From != username {
+					msgTime, err := time.Parse(time.RFC3339, msg.Timestamp)
+					if err != nil {
+						continue
+					}
+					if msgTime.After(lastSeenTime) {
+						count++
+					}
+				}
+			}
+		}
+	}
+
+	// Check group messages
+	if messages, exists := groupMessages[chatID]; exists {
+		for _, msg := range messages {
+			if msg.From != username {
+				msgTime, err := time.Parse(time.RFC3339, msg.Timestamp)
+				if err != nil {
+					continue
+				}
+				if msgTime.After(lastSeenTime) {
+					count++
+				}
+			}
+		}
+	}
+
+	log.Printf("Unread count for %s in %s: %d", username, chatID, count)
+	return count
+}
+
+// sendUnreadCounts sends unread message counts to a user
+func sendUnreadCounts(username string) {
+	unreadCounts := make(map[string]int)
+
+	// Get unread counts for private chats
+	clientsMux.RLock()
+	for otherUser := range clients {
+		if otherUser != username {
+			count := getUnreadCount(username, otherUser)
+			if count > 0 {
+				unreadCounts[otherUser] = count
+			}
+		}
+	}
+	clientsMux.RUnlock()
+
+	// Get unread counts for groups
+	groupsMux.RLock()
+	for groupName, group := range groups {
+		if contains(group.Members, username) {
+			count := getUnreadCount(username, groupName)
+			if count > 0 {
+				unreadCounts[groupName] = count
+			}
+		}
+	}
+	groupsMux.RUnlock()
+
+	// Convert unreadCounts to JSON string
+	countsJSON, err := json.Marshal(unreadCounts)
+	if err != nil {
+		log.Printf("Error marshaling unread counts: %v", err)
+		return
+	}
+
+	// Send unread counts to user
+	message := Message{
+		Type:      TypeUnreadCount,
+		From:      "system",
+		To:        username,
+		Content:   string(countsJSON),
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	messageBytes, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling unread counts message: %v", err)
+		return
+	}
+
+	log.Printf("Sending unread counts to %s: %s", username, string(countsJSON))
+	sendToUser(username, messageBytes)
 }
