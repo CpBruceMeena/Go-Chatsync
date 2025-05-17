@@ -21,9 +21,11 @@ if ! command -v node &> /dev/null; then
 fi
 
 # Check if Go dependencies need to be installed
-if [ ! -d "vendor" ]; then
+if [ ! -d "backend/vendor" ]; then
     echo -e "${YELLOW}Installing Go dependencies...${NC}"
+    cd backend
     go mod tidy
+    cd ..
 else
     echo -e "${GREEN}Go dependencies already installed${NC}"
 fi
@@ -49,15 +51,17 @@ else
 fi
 
 # Create static/build directory if it doesn't exist
-mkdir -p static/build
+mkdir -p backend/static/build
 
 # Copy build files to static directory
 echo -e "${YELLOW}Copying build files to static directory...${NC}"
-cp -r frontend/build/* static/build/
+cp -r frontend/build/* backend/static/build/
 
 # Build the Go binary
 echo -e "${YELLOW}Building Go binary...${NC}"
+cd backend
 go build -o chatsync
+cd ..
 
 # Check if build was successful
 if [ $? -eq 0 ]; then
@@ -65,6 +69,7 @@ if [ $? -eq 0 ]; then
     echo -e "${YELLOW}Starting server...${NC}"
     echo -e "${GREEN}Server is running at http://localhost:8080${NC}"
     echo -e "${YELLOW}Press Ctrl+C to stop the server${NC}"
+    cd backend
     ./chatsync
 else
     echo -e "${RED}Build failed!${NC}"

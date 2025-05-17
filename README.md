@@ -1,135 +1,133 @@
-# ChatSync - Real-time Chat Application
+# Go-Chatsync
 
-ChatSync is a modern, real-time chat application built with Go and WebSocket technology. It provides a seamless messaging experience with support for both private and group chats, along with real-time user status updates.
+A real-time chat application built with Go and React, featuring private messaging and group chat functionality.
 
 ## Features
 
-- **Real-time Messaging**: Instant message delivery using WebSocket technology
-- **Private Chat**: One-to-one conversations between users
-- **Group Chat**: Create and manage group conversations
-- **User Status**: Real-time online/offline status indicators
-- **Message Persistence**: Messages are stored and retrieved for both private and group chats
-- **Modern UI**: Clean and intuitive user interface
-- **Responsive Design**: Works seamlessly across different devices
-- **Group Management**: Create groups with multiple members, add/remove members, view group members, and group-specific chat history
+- Real-time messaging using WebSocket
+- Private messaging between users
+- Group chat support
+- User presence tracking
+- Modern Material-UI interface
+- Responsive design
+- Message history (non-persistent)
 
-## UI Features
+## Tech Stack
 
-- **Clean and modern interface**: Provides a user-friendly and visually appealing experience
-- **Responsive design**: Works well on various devices, including desktops, tablets, and smartphones
-- **Real-time status updates**: Users can see the online/offline status of other users in real-time
-- **Intuitive group creation dialog**: Allows users to easily create new groups
-- **Member management interface**: Provides tools to manage group members and their permissions
-- **Message history with timestamps**: Allows users to view the history of messages in both private and group chats
-- **Online/offline indicators**: Users can see if other users are online or offline
-- **System notifications**: Users receive notifications about new messages or group events
+### Backend
+- Go 1.21
+- Gorilla WebSocket
+- In-memory message storage
 
-## Group Management
-
-- **Create new groups with custom names**: Users can create new groups with specific names
-- **Add multiple members at once**: Users can add multiple members to a group in one operation
-- **Remove members from groups**: Users can remove members from a group if needed
-- **View group members**: Users can view the list of members in a group
-- **Group-specific chat history**: Users can view the history of messages in a specific group
-- **Admin controls for group management**: Group owners can manage the group, including adding or removing members
+### Frontend
+- React
+- Material-UI
+- WebSocket client
+- Context-based state management
 
 ## Prerequisites
 
-- Go 1.16 or higher
-- Modern web browser with WebSocket support
+- Go 1.21 or higher
+- Node.js and npm
+- Modern web browser
 
-## Quick Start
+## Installation
 
-The easiest way to run ChatSync is using the provided run script:
-
+1. Clone the repository:
 ```bash
-# Clone the repository
-git clone https://github.com/CpBruceMeena/Go-Chatsync.git
+git clone https://github.com/yourusername/Go-Chatsync.git
 cd Go-Chatsync
+```
 
-# Run the application
+2. Run the application:
+```bash
 ./run.sh
 ```
 
-The application will be available at `http://localhost:8080`
+The script will:
+- Install Go dependencies
+- Install frontend dependencies
+- Build the React app
+- Build the Go binary
+- Start the server
 
-## Manual Setup
+## Usage
 
-If you prefer to set up manually, follow these steps:
+1. Open your browser and navigate to http://localhost:8080
+2. Enter a username to start chatting
+3. Features available:
+   - Private messaging: Click on a user to start a private chat
+   - Group chat: Create a group and add members
+   - Real-time updates: See messages instantly
+   - User presence: See who's online
 
-1. **Install Dependencies**
-   ```bash
-   go mod tidy
-   ```
+## Development
 
-2. **Build the Project**
-   ```bash
-   go build -o chatsync
-   ```
-
-3. **Run the Application**
-   ```bash
-   ./chatsync
-   ```
-
-## Project Structure
-
+### Project Structure
 ```
-ChatSync/
-├── main.go           # Main application entry point
-├── static/          # Static files
-│   └── index.html   # Frontend application
-├── go.mod           # Go module file
-├── go.sum           # Go module checksum
-└── run.sh          # Automated run script
+.
+├── frontend/           # React application
+│   ├── src/           # Source code
+│   ├── public/        # Static files
+│   ├── package.json   # Frontend dependencies
+│   └── README.md      # Frontend documentation
+├── backend/           # Go application
+│   ├── main.go       # Backend entry point
+│   ├── static/       # Static assets
+│   ├── scripts/      # Build scripts
+│   ├── go.mod        # Go module file
+│   └── go.sum        # Go module checksum
+└── run.sh            # Build and run script
+```
+
+### Running in Development Mode
+
+1. Start the backend:
+```bash
+cd backend
+go run main.go
+```
+
+2. Start the frontend development server:
+```bash
+cd frontend
+npm start
 ```
 
 ## Features in Detail
 
-### Private Chat
-- Real-time one-to-one messaging
-- Message history persistence
-- Online/offline status indicators
-- Message timestamps
-
-### Group Chat
-- Create new groups
-- Add/remove members
-- Group message history
-- Member management
-- Admin controls for group owners
+### Real-time Messaging
+- Instant message delivery
+- Message history for current session
+- Support for private and group messages
 
 ### User Interface
-- Clean and modern design
-- Intuitive navigation
-- Real-time status updates
+- Clean, modern design with Material-UI
 - Responsive layout
-- Easy group management
+- User presence indicators
+- Message timestamps
+- Clear visual hierarchy
 
-## Technical Details
+### Group Management
+- Create new groups
+- Add/remove members
+- Group chat functionality
 
-### Backend
-- Built with Go
-- WebSocket for real-time communication
-- Concurrent message handling
-- Message persistence
-- User session management
-
-### Frontend
-- Modern HTML5/CSS3
-- JavaScript for real-time updates
-- WebSocket client implementation
-- Responsive design
-- Font Awesome icons
+### Technical Features
+- WebSocket communication
+- Real-time updates
+- Connection management
+- Error handling
+- State management
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Support
-
-For support, please open an issue in the GitHub repository. 
+This project is licensed under the MIT License - see the LICENSE file for details. 
