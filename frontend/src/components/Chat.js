@@ -28,6 +28,7 @@ import {
   Group as GroupIcon,
   Person as PersonIcon
 } from '@mui/icons-material';
+import CreateGroupDialog from './CreateGroupDialog';
 
 const Chat = () => {
   const {
@@ -188,7 +189,16 @@ const Chat = () => {
       <Paper sx={{ width: 300, mr: 2, display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6">Users ({users.length})</Typography>
-          <IconButton onClick={() => setIsGroupDialogOpen(true)}>
+          <IconButton 
+            onClick={() => setIsGroupDialogOpen(true)}
+            sx={{
+              color: 'primary.main',
+              '&:hover': {
+                backgroundColor: 'primary.light',
+                color: 'white'
+              }
+            }}
+          >
             <AddIcon />
           </IconButton>
         </Box>
@@ -316,51 +326,12 @@ const Chat = () => {
       </Paper>
 
       {/* Create Group Dialog */}
-      <Dialog open={isGroupDialogOpen} onClose={() => setIsGroupDialogOpen(false)}>
-        <DialogTitle>Create New Group</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Group Name"
-            fullWidth
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-          />
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Members</InputLabel>
-            <Select
-              multiple
-              value={selectedMembers}
-              onChange={(e) => setSelectedMembers(e.target.value)}
-              renderValue={(selected) => (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {selected.map((value) => (
-                    <Chip key={value} label={value} />
-                  ))}
-                </Box>
-              )}
-            >
-              {users.map((user) => (
-                user !== username && (
-                  <MenuItem key={user} value={user}>
-                    {user}
-                  </MenuItem>
-                )
-              ))}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsGroupDialogOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleCreateGroup}
-            disabled={!newGroupName.trim() || selectedMembers.length === 0}
-          >
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CreateGroupDialog
+        open={isGroupDialogOpen}
+        onClose={() => setIsGroupDialogOpen(false)}
+        onCreateGroup={createGroup}
+        users={users.filter(user => user !== username)}
+      />
     </Box>
   );
 };
