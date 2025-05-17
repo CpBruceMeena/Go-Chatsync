@@ -20,7 +20,7 @@ const Login = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        bgcolor: 'background.default'
+        backgroundColor: 'background.default'
       }}
     >
       <Paper
@@ -29,10 +29,19 @@ const Login = () => {
           p: 4,
           width: '100%',
           maxWidth: 400,
-          textAlign: 'center'
+          textAlign: 'center',
+          backgroundColor: 'background.paper'
         }}
       >
-        <Typography variant="h4" component="h1" gutterBottom>
+        <Typography 
+          variant="h4" 
+          component="h1" 
+          gutterBottom
+          sx={{ 
+            color: 'primary.main',
+            fontWeight: 'bold'
+          }}
+        >
           ChatSync
         </Typography>
         <form onSubmit={handleSubmit}>
@@ -43,12 +52,25 @@ const Login = () => {
             onChange={(e) => setInputUsername(e.target.value)}
             margin="normal"
             required
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                '&:hover fieldset': {
+                  borderColor: 'primary.main',
+                },
+              },
+            }}
           />
           <Button
             type="submit"
             variant="contained"
             fullWidth
-            sx={{ mt: 2 }}
+            sx={{ 
+              mt: 2,
+              backgroundColor: 'primary.main',
+              '&:hover': {
+                backgroundColor: 'primary.dark',
+              },
+            }}
             disabled={!inputUsername.trim() || isConnected}
           >
             {isConnected ? 'Connected' : 'Connect'}

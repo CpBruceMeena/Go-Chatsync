@@ -1,19 +1,9 @@
 import React from 'react';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 import { WebSocketProvider, useWebSocket } from './contexts/WebSocketContext';
 import Login from './components/Login';
 import Chat from './components/Chat';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1a73e8',
-    },
-    background: {
-      default: '#f0f2f5',
-    },
-  },
-});
+import theme from './theme';
 
 const AppContent = () => {
   const { isConnected } = useWebSocket();
