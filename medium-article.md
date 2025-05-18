@@ -1,4 +1,4 @@
-# Building a Real-Time Chat Application with Go and React: A Comprehensive Guide
+# Go-Chatsync: Building a Real-Time Chat Application with Go and React
 
 ![Chat Application Banner](https://via.placeholder.com/1200x400)
 
@@ -7,6 +7,7 @@ In today's digital world, real-time communication is essential. Whether it's for
 ## Table of Contents
 - [Introduction](#introduction)
 - [Architecture Overview](#architecture-overview)
+- [React-Go Integration](#react-go-integration)
 - [Key Features](#key-features)
 - [Technical Implementation](#technical-implementation)
 - [Frontend Design](#frontend-design)
@@ -194,6 +195,193 @@ The application uses a custom message protocol over WebSocket:
    - WebSocket connection distribution
    - Message queue management
    - Resource allocation
+
+## React-Go Integration
+
+One of the key aspects of our application is the seamless integration between the React frontend and Go backend. Let's explore how we've achieved this:
+
+### 1. Single Port Serving
+
+Our application serves both the React frontend and Go backend from a single port (8080), simplifying deployment and reducing complexity:
+
+```go
+// main.go
+func main() {
+    // Serve static files from the React build directory
+    fs := http.FileServer(http.Dir("./frontend/build"))
+    http.Handle("/", fs)
+
+    // WebSocket endpoint
+    http.HandleFunc("/ws", handleWebSocket)
+
+    // Start the server
+    log.Printf("Server starting on port 8080...")
+    if err := http.ListenAndServe(":8080", nil); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### 2. Development Environment
+
+During development, we maintain separate servers for better development experience:
+
+1. **React Development Server (Port 3000)**:
+   - Hot reloading
+   - Development tools
+   - Source maps
+   - Error overlay
+
+2. **Go Backend Server (Port 8080)**:
+   - WebSocket endpoint
+   - API handlers
+   - Development logging
+
+The React development server is configured to proxy WebSocket connections to the Go backend:
+
+```javascript
+// package.json
+{
+  "proxy": "http://localhost:8080"
+}
+```
+
+### 3. Production Build Process
+
+For production, we follow these steps:
+
+1. Build the React application:
+```bash
+cd frontend
+npm run build
+```
+
+2. Copy the build files to the Go project:
+```bash
+cp -r build/* ../backend/static/
+```
+
+3. Serve everything from the Go server:
+```go
+// main.go
+func main() {
+    // Serve static files
+    fs := http.FileServer(http.Dir("./static"))
+    http.Handle("/", fs)
+    
+    // API and WebSocket endpoints
+    http.HandleFunc("/ws", handleWebSocket)
+    
+    // Start server
+    log.Fatal(http.ListenAndServe(":8080", nil))
+}
+```
+
+### 4. WebSocket Integration
+
+The WebSocket connection is managed through a custom React context:
+
+```javascript
+// WebSocketContext.js
+export const WebSocketProvider = ({ children }) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const wsRef = useRef(null);
+
+  const connect = useCallback((username) => {
+    const ws = new WebSocket(`ws://${window.location.host}/ws`);
+    
+    ws.onopen = () => {
+      setIsConnected(true);
+      ws.send(JSON.stringify({
+        type: 'register',
+        username: username
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      handleMessage(message);
+    };
+
+    wsRef.current = ws;
+  }, []);
+
+  // ... rest of the context implementation
+};
+```
+
+### 5. Message Protocol
+
+We use a consistent message protocol between React and Go:
+
+```javascript
+// Frontend message structure
+{
+  type: string,      // Message type
+  from: string,      // Sender
+  to: string,        // Recipient
+  content: string,   // Message content
+  timestamp: string  // ISO timestamp
+}
+```
+
+```go
+// Backend message structure
+type Message struct {
+    Type      string    `json:"type"`
+    From      string    `json:"from"`
+    To        string    `json:"to"`
+    Content   string    `json:"content"`
+    Timestamp time.Time `json:"timestamp"`
+}
+```
+
+### 6. Error Handling
+
+We implement consistent error handling across both layers:
+
+```javascript
+// Frontend error handling
+const handleError = (error) => {
+  console.error('WebSocket error:', error);
+  // Attempt reconnection
+  setTimeout(() => connect(username), 5000);
+};
+```
+
+```go
+// Backend error handling
+func handleWebSocketError(err error, client *Client) {
+    log.Printf("WebSocket error: %v", err)
+    client.conn.Close()
+    unregister <- client
+}
+```
+
+### 7. State Synchronization
+
+The application maintains state synchronization between React and Go:
+
+1. **User State**:
+   - Online/offline status
+   - Active chats
+   - Unread messages
+
+2. **Message State**:
+   - Message history
+   - Delivery status
+   - Read receipts
+
+3. **Group State**:
+   - Member lists
+   - Group settings
+   - Permissions
+
+This integration ensures a seamless user experience while maintaining the benefits of both technologies:
+- Go's performance and concurrency for the backend
+- React's component-based architecture for the frontend
+- WebSocket for real-time communication
+- Single port serving for simplified deployment
 
 ## Key Features
 
