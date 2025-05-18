@@ -1,6 +1,6 @@
 # Go-Chatsync: Building a Real-Time Chat Application with Go and React
 
-![Chat Application Banner](https://via.placeholder.com/1200x400)
+![Go-Chatsync Banner](https://raw.githubusercontent.com/CpBruceMeena/Go-Chatsync/main/assets/banner.png)
 
 In today's digital world, real-time communication is essential. Whether it's for team collaboration, customer support, or social networking, having a reliable chat application is crucial. In this article, we'll explore how to build a modern, real-time chat application using Go for the backend and React for the frontend.
 
