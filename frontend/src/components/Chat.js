@@ -11,9 +11,6 @@ import {
   ListItemButton,
   Divider,
   IconButton,
-  Dialog,
-  DialogContent,
-  DialogActions,
   Badge
 } from '@mui/material';
 import {
@@ -33,20 +30,12 @@ const Chat = () => {
     selectedChat,
     setSelectedChat,
     sendMessage,
-    createGroup,
-    addGroupMember,
-    removeGroupMember,
-    setMessages,
-    ws
+    createGroup
   } = useWebSocket();
 
   const [newMessage, setNewMessage] = useState('');
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [selectedMembers, setSelectedMembers] = useState([]);
-  const [selectedGroup, setSelectedGroup] = useState(null);
   const [unreadMessages, setUnreadMessages] = useState({});
-  const [lastSeenTimestamps, setLastSeenTimestamps] = useState({});
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
@@ -70,8 +59,6 @@ const Chat = () => {
         selectedChat,
         username
       });
-      // The backend will send the message history when the chat is selected
-      // We just need to ensure our filtering logic is correct
     }
   }, [selectedChat, username]);
 
@@ -79,15 +66,6 @@ const Chat = () => {
     console.log('Groups updated in Chat component:', groups);
     console.log('Current groups state:', groups);
   }, [groups]);
-
-  // Function to update last seen timestamp when chat is selected
-  const updateLastSeen = useCallback((chatId) => {
-    const currentTime = new Date().toISOString();
-    setLastSeenTimestamps(prev => ({
-      ...prev,
-      [chatId]: currentTime
-    }));
-  }, []);
 
   // Update unread messages when receiving unread count message
   useEffect(() => {
@@ -130,25 +108,6 @@ const Chat = () => {
     };
     console.log('Chat: Sending last seen update:', message);
     sendMessage(message);
-
-    // Update local last seen timestamp
-    setLastSeenTimestamps(prev => ({
-      ...prev,
-      [id]: currentTime
-    }));
-  };
-
-  const handleSendMessage = (content) => {
-    if (!content.trim() || !selectedChat) return;
-
-    const message = {
-      type: selectedChat.type === 'private' ? 'private_message' : 'group_message',
-      to: selectedChat.id,
-      content: content.trim()
-    };
-
-    sendMessage(message);
-    setNewMessage(''); // Clear the input field after sending
   };
 
   // Filter messages for the selected chat
@@ -167,69 +126,6 @@ const Chat = () => {
       msg.type === 'group_message' && msg.to === selectedChat.id
     );
   }, [messages, selectedChat, username]);
-
-  const handleCreateGroup = () => {
-    if (newGroupName.trim() && selectedMembers.length > 0) {
-      console.log('Creating group:', {
-        name: newGroupName.trim(),
-        members: selectedMembers
-      });
-      createGroup(newGroupName.trim(), selectedMembers);
-      setNewGroupName('');
-      setSelectedMembers([]);
-      setIsGroupDialogOpen(false);
-    }
-  };
-
-  // Memoize the message filter function
-  const isMessageForCurrentChat = useCallback((message) => {
-    if (!selectedChat) return false;
-    
-    if (selectedChat.type === 'private') {
-      // For private messages, show if:
-      // 1. Message is from current user to selected user
-      // 2. Message is from selected user to current user
-      const isRelevant = (message.type === 'private_message' && 
-                         ((message.from === username && message.to === selectedChat.id) ||
-                          (message.from === selectedChat.id && message.to === username)));
-      console.log('Chat: Checking message relevance:', {
-        message,
-        selectedChat,
-        username,
-        isRelevant,
-        condition1: message.from === username && message.to === selectedChat.id,
-        condition2: message.from === selectedChat.id && message.to === username,
-        messageType: message.type
-      });
-      return isRelevant;
-    }
-    
-    // For group messages, show if message is for the selected group
-    return selectedChat.type === 'group' && message.type === 'group_message' && message.to === selectedChat.id;
-  }, [selectedChat, username]);
-
-  // Add a function to get message statistics
-  const getMessageStats = useCallback(() => {
-    const stats = {
-      sent: {},
-      received: {}
-    };
-
-    for (const message of messages) {
-      if (message.type === 'private_message') {
-        // Count sent messages
-        if (message.from === username) {
-          stats.sent[message.to] = (stats.sent[message.to] || 0) + 1;
-        }
-        // Count received messages
-        if (message.to === username) {
-          stats.received[message.from] = (stats.received[message.from] || 0) + 1;
-        }
-      }
-    }
-
-    return stats;
-  }, [messages, username]);
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', p: 2, bgcolor: 'background.default' }}>
