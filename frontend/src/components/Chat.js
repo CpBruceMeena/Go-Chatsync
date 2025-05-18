@@ -363,11 +363,41 @@ const Chat = () => {
           }}
         >
           <Typography variant="h6">
-            {selectedChat ? (selectedChat.type === 'private' ? selectedChat.id : groups[selectedChat.id]?.name) : 'Select a chat'}
+            {selectedChat ? (
+              selectedChat.type === 'private' ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PersonIcon sx={{ fontSize: 20 }} />
+                  {selectedChat.id}
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <GroupIcon sx={{ fontSize: 20 }} />
+                  {groups[selectedChat.id]?.name}
+                </Box>
+              )
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <GroupIcon sx={{ fontSize: 20 }} />
+                Welcome to ChatSync
+              </Box>
+            )}
           </Typography>
-          <Typography variant="subtitle1">
-            Logged in as: {username}
-          </Typography>
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1,
+              bgcolor: 'primary.dark',
+              px: 2,
+              py: 0.5,
+              borderRadius: 2
+            }}
+          >
+            <PersonIcon sx={{ color: 'white', fontSize: 20 }} />
+            <Typography variant="subtitle1" sx={{ color: 'white' }}>
+              {username}
+            </Typography>
+          </Box>
         </Box>
         {selectedChat ? (
           <>
@@ -394,7 +424,7 @@ const Chat = () => {
                   <Box
                     sx={{
                       maxWidth: '50%',
-                      p: 1,
+                      p: 1.5,
                       borderRadius: 2,
                       bgcolor: msg.from === username ? 'primary.main' : 'secondary.main',
                       color: msg.from === username ? 'white' : 'text.primary',
@@ -420,8 +450,8 @@ const Chat = () => {
                       <Typography 
                         variant="body2" 
                         sx={{ 
-                          fontSize: '0.8rem',
-                          lineHeight: 1.3,
+                          fontSize: '0.9rem',
+                          lineHeight: 1.4,
                           pr: 0.5
                         }}
                       >
@@ -480,6 +510,9 @@ const Chat = () => {
                     '&:hover fieldset': {
                       borderColor: 'primary.main',
                     },
+                    '&.Mui-focused fieldset': {
+                      borderColor: 'primary.main',
+                    }
                   },
                 }}
               />
@@ -507,13 +540,39 @@ const Chat = () => {
           <Box 
             sx={{ 
               display: 'flex', 
+              flexDirection: 'column',
               alignItems: 'center', 
               justifyContent: 'center', 
               height: '100%',
-              bgcolor: 'background.default'
+              gap: 3,
+              bgcolor: 'background.default',
+              p: 4
             }}
           >
-            <Typography color="text.secondary">Select a chat to start messaging</Typography>
+            <GroupIcon sx={{ fontSize: 80, color: 'primary.main', opacity: 0.5 }} />
+            <Typography 
+              variant="h5" 
+              color="text.secondary"
+              sx={{ 
+                textAlign: 'center',
+                maxWidth: '80%',
+                lineHeight: 1.5,
+                fontWeight: 500
+              }}
+            >
+              Start a conversation by selecting a user or group from the sidebar
+            </Typography>
+            <Typography 
+              variant="body1" 
+              color="text.secondary"
+              sx={{ 
+                textAlign: 'center',
+                maxWidth: '60%',
+                opacity: 0.7
+              }}
+            >
+              You can create new groups and invite users to collaborate
+            </Typography>
           </Box>
         )}
       </Paper>
